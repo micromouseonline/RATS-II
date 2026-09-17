@@ -172,10 +172,27 @@ tidiness).
         `scratch_copy()` — its original 7 tests still pass unchanged, both
         standalone and via pytest, confirmed from both `contest_app/` and
         the repo root.
-  - [ ] **APP-1.3** — State object: the `Public_Variables` replacement —
-        plain data, grouped logically, no behavior. **Success:** unit tests
-        assert sensible defaults; constructing it needs no GUI/DB/serial
-        import (proves the decoupling).
+  - [x] **APP-1.3** — State object: the `Public_Variables` replacement —
+        `contest_app/src/rats/state.py`'s `AppState`, plain dataclasses
+        grouped into `ConnectionState`/`EventState`/`EntryState`/
+        `RunState`/`DisplayRefreshState`/`WindowState`/
+        `GateDiagnosticsState`/`WatchdogState`, mirroring
+        `Public_Variables.cs` field-for-field for traceability (two
+        deliberate deviations, documented in the module docstring:
+        `connString` dropped — DB path is `APP-1.4`/`.8`'s concern per
+        `REPO-3` — and `public_competition_name`/`public_competition_class`
+        renamed to drop the meaningless `public_` prefix). Scoring-model
+        fields (`touches_enabled` etc.) deliberately left out — those are
+        Form1-local in the legacy code, not `Public_Variables`, and
+        `APP-1.4` is where that lookup's home gets decided. **Success:**
+        `contest_app/tests/test_state.py` asserts defaults match the legacy
+        values (`time_left_ms=600000`, `grace_period_s=30`,
+        `no_of_runs_allowed=5`, `fastest_score_time_this_robot=-1`,
+        `watchdog_alarm_repeat_counter=201`, etc.) and instance
+        independence; a subprocess-isolated check confirms constructing
+        `AppState` never pulls in `tkinter`/`sqlite3`/`serial` (proves the
+        decoupling for real, not by inspection — an in-process check would
+        have been contaminated by other test modules' own imports).
   - [ ] **APP-1.4** — DB access layer: one function per DB operation
         `Form1.cs` performs (entry/competition selects, `Entry_Run` insert,
         `Best_Score_Time` insert/update via the `DB-5` rewrites,
