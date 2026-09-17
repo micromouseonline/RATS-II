@@ -2,8 +2,8 @@
 
 APP-1.2 (TEST-1's deliverable). Implements just the slice of pyserial's
 `Serial` surface the reader thread (APP-1.6) is designed to use --
-`read()`, `in_waiting`, `close()` -- so it can be swapped in for a real
-`serial.Serial` instance unchanged. See plans/arch-1-concurrency.md.
+`read()`, `write()`, `in_waiting`, `close()` -- so it can be swapped in for
+a real `serial.Serial` instance unchanged. See plans/arch-1-concurrency.md.
 
 Bytes are handed out one scripted chunk per read(), matching how the real
 reader loop re-scans its buffer after every read regardless of how many
@@ -20,6 +20,7 @@ class FakeSerialTransport:
         for chunk in chunks:
             self._queue.put(chunk)
         self._closed = False
+        self.written: list[bytes] = []
 
     def feed(self, chunk: bytes) -> None:
         """Queue another chunk of bytes as if it just arrived on the wire."""
@@ -34,6 +35,12 @@ class FakeSerialTransport:
         if self._closed:
             return b""
         return self._queue.get()
+
+    def write(self, data: bytes) -> int:
+        """Record outbound bytes (NewMouse/SetMode) for tests to assert
+        against, instead of touching a real port."""
+        self.written.append(data)
+        return len(data)
 
     @property
     def in_waiting(self) -> int:

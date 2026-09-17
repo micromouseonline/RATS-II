@@ -231,15 +231,29 @@ tidiness).
         split across two reads, multiple lines in one read, CRLF handling,
         the `Q-6` garbage-line-not-recovered case, one test per inbound
         code, plus the outbound formatters.
-  - [ ] **APP-1.6** — Serial transport: reader thread + `queue.Queue`, per
-        `plans/arch-1-concurrency.md`, wrapping `APP-1.5`'s parser and either
-        real `pyserial` or `APP-1.2`'s fake transport. Connection setup
-        (baud/data bits/parity/stop bits/timeout) lives in
-        `connect_BTN_Click` (`Form1.cs:2400`) — **`BaudRate = 9600` there is
-        the literal line to change for the 115200 upgrade** (found in
-        `APP-1.0`). **Success:** using the fake transport, messages arrive
-        on the queue in order, and the thread stops cleanly (joins within a
-        short timeout) on request.
+  - [x] **APP-1.6** — Serial transport: `contest_app/src/rats/serial_transport.py`.
+        `SerialReader` (background thread + `queue.Queue`, per
+        `plans/arch-1-concurrency.md`): drains a duck-typed transport
+        (real `pyserial.Serial` or `APP-1.2`'s `FakeSerialTransport`
+        unchanged), splits into `Line`s via `APP-1.5`'s parser, enqueues
+        every line — not just parsed ones, per `Q-6` — so a later logging
+        layer never misses one; `start()`/`stop(timeout)` lifecycle;
+        transport errors surface as `Disconnected` queue items, not thread
+        crashes. `configure_serial_port`/`open_serial_port` replace
+        `connect_BTN_Click` (`Form1.cs:2400`)'s setup — **baud rate is now
+        a parameter, not hardcoded** (`APP-1.8`'s port selector will offer
+        a choice, per the user's note), read timeout defaults to `0.2`s
+        (down from legacy's `10000`ms, needed since this thread actually
+        blocks in `read()` — see `plans/arch-1-concurrency.md`, now
+        synced). `send_new_mouse`/`send_set_mode` cover the 2 outbound
+        writes, straight to the wire per `ARCH-1`, not through the queue.
+        **Success:** `contest_app/tests/test_serial_transport.py`, 9
+        tests — in-order queue delivery, a line split across two reads,
+        garbage lines still reaching the queue for logging, clean shutdown
+        within timeout (stable across repeated runs), a transport-error →
+        `Disconnected` case, both outbound senders, and
+        `configure_serial_port` against a real unopened `pyserial.Serial()`
+        confirming the baud rate actually varies.
   - [ ] **APP-1.7** — Headless app core: wires `.3`+`.4`+`.6` together
         exactly as `parseData()`'s switch and the `*_message()` handlers do
         — draining the queue, mutating state, triggering the same DB writes
@@ -272,7 +286,12 @@ tidiness).
         no scoring row written). First true integration test of the whole
         non-GUI pipeline, and the highest-value stage to get right.
   - [ ] **APP-1.8** — Main window: thin Tkinter wiring around `APP-1.7`'s
-        core via `after()`-driven queue draining. **`Q-4` resolved:
+        core via `after()`-driven queue draining. **New vs. legacy: the
+        port selector gets a baud-rate choice added alongside the COM port
+        dropdown** (legacy hardcoded `9600` in `connect_BTN_Click`, no UI
+        for it at all — noted during `APP-1.6`, needed since the port
+        moves to 115200 and a user may still have older 9600 hardware).
+        **`Q-4` resolved:
         "Stand Alone Mode" (degraded offline operation when the DB is
         unreachable) is a real requirement, not just legacy parity** — needed
         for practice sessions without a database. Per `REPO-3`, implemented

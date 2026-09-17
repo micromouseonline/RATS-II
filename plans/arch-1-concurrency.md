@@ -53,12 +53,17 @@ without needing locks on the state object itself — enforce it in code
 review, not just convention.
 
 - **Reader thread**: owns the `pyserial` (or future transport) connection.
-  Loop: blocking read → accumulate into `<...>` frames (same framing logic
-  as legacy `parseData()`'s buffer scan) → on a complete frame, construct a
-  small `Message(type: int, value: str, received_at: float)` object → put
-  on the queue. Catches and logs its own exceptions; a transport error
-  should surface as a special message on the queue (e.g. `Disconnected`),
-  not an unhandled thread crash.
+  Loop: blocking read → accumulate into lines → on each complete line, put
+  a `Line` (raw text + parsed `Message` or `None`) on the queue --
+  **updated from this doc's original sketch**: framing turned out to be
+  line-based (`\n`-terminated), not `parseData()`'s literal
+  bracket-hunting-across-a-buffer approach, per a user correction during
+  `APP-1.5` (`Q-6`) -- and every raw line has to reach the queue, not just
+  ones that parse to a `Message`, since `Q-6` also requires logging every
+  input line, successfully parsed or not. Catches and logs its own
+  exceptions; a transport error surfaces as a `Disconnected` queue item,
+  not an unhandled thread crash. Implemented in
+  `contest_app/src/rats/serial_transport.py` (`APP-1.6`).
 - **Queue**: stdlib `queue.Queue()`, thread-safe by construction (GIL
   covers it, no extra locking needed).
 - **Main thread**: `after(N, drain_queue)` — likely a short interval like
@@ -97,7 +102,14 @@ together with UI updates like the original.
 ## Open for `APP-1` to decide
 
 - Exact `after()` interval for `drain_queue` (legacy used 10ms; may not need
-  to be that tight once real I/O isn't happening on the main thread).
-- Read timeout value for the reader thread's cooperative-cancel check.
-- Whether `Message` is a dataclass, a `NamedTuple`, or something else —
-  not architecturally significant, just needs picking.
+  to be that tight once real I/O isn't happening on the main thread) —
+  still open, `APP-1.8`'s concern.
+- ~~Read timeout value for the reader thread's cooperative-cancel
+  check.~~ **Decided in `APP-1.6`**: `0.2`s default (`configure_serial_port`'s
+  `read_timeout`), a deliberate drop from legacy's `10000`ms — that value
+  suited the old non-blocking polling-`Timer1` model, not a thread that
+  actually blocks in `read()` and needs to notice a stop request promptly.
+- ~~Whether `Message` is a dataclass, a `NamedTuple`, or something else.~~
+  **Decided in `APP-1.5`**: a frozen dataclass (`rats.serial_protocol.Message`);
+  the queue itself carries `Line` (raw text + `Message | None`), not bare
+  `Message`s — see above.
