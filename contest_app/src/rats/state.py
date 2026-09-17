@@ -61,7 +61,18 @@ class EntryState:
 @dataclass
 class RunState:
     """Live timing/scoring state for the run in progress, plus the
-    per-competition run-count/limit fields it's checked against."""
+    per-competition run-count/limit fields it's checked against.
+
+    `entry_time_limit_s`, `split_time_running`, `maze_time_running`, and
+    the three `last_*_inserted` dedup fields were Form1-local in the
+    legacy code (not `Public_Variables`), added here in `APP-1.7` once the
+    app core needed them -- `entry_time_limit_s` is sourced from the same
+    `Competition` row query as `no_of_runs_allowed`/`grace_period_s`
+    (`select_competition()`); the two `*_running` flags gate the
+    UI-timer-driven time interpolation (`Timer1_Tick`, still `APP-1.8`'s
+    concern, not reproduced yet); the `last_*_inserted` fields dedup
+    repeated run-time messages (the wire protocol's "send `C1RunTime` 3x"
+    convention)."""
 
     split_time_ms: int = 0
     run_time_ms: int = 0
@@ -77,6 +88,12 @@ class RunState:
     grace_period_ms: int = 30000
     no_of_runs_used: int = 0
     no_of_runs_allowed: int = 5
+    entry_time_limit_s: int = 0
+    split_time_running: bool = False
+    maze_time_running: bool = False
+    last_run_time_inserted: int = 0
+    last_entry_id_inserted: int = 0
+    last_score_time_inserted: int = 0
 
 
 @dataclass
@@ -137,6 +154,29 @@ class WatchdogState:
 
 
 @dataclass
+class ScoringConfig:
+    """The current competition's `Scoring_Model` lookup (`APP-1.4`'s
+    `select_scoring_model`) -- Form1-local in the legacy code, not
+    `Public_Variables`, added here in `APP-1.7` once the app core needed
+    somewhere to hold it between selecting a competition and scoring a
+    run. `Touches_Enabled`/`Touches_Cumulative`/`Touches_Per_Run` are
+    treated as plain truthy flags here, **not** compared literally against
+    `-1` the way the decompiled C# does (`touches_enabled == -1`) -- the
+    real backend data stores these as `1`/`0`, never `-1` (confirmed
+    against `sample_data/demo.db`, every `Scoring_Model` row) -- a literal
+    `-1` comparison would have made the "touches" scoring path permanently
+    dead code. User-confirmed (`Q-7` in `todo.md`): touches are simply
+    true/false, not a literal-`-1` VB quirk to preserve."""
+
+    touches_enabled: int = 0
+    touches_cumulative: int = 0
+    touch_time_ms: int = 0
+    entry_time_divider: int = 0
+    touch_time_divider: int = 0
+    touches_per_run: int = 0
+
+
+@dataclass
 class AppState:
     """The full application state -- one instance per running app."""
 
@@ -148,3 +188,22 @@ class AppState:
     windows: WindowState = field(default_factory=WindowState)
     gate_diagnostics: GateDiagnosticsState = field(default_factory=GateDiagnosticsState)
     watchdog: WatchdogState = field(default_factory=WatchdogState)
+    scoring: ScoringConfig = field(default_factory=ScoringConfig)
+
+    def clear_timer(self) -> None:
+        """`clear_timer()` (`Form1.cs:2524`): resets run-state display
+        fields to a fresh-entry baseline. Called by `dnf()`, `clear()`,
+        and `start_new_entry()` (`New Mouse`/practice-mode toggle/entry
+        selection) in `rats.core.AppCore`."""
+        self.run.split_time_ms = 0
+        self.run.maze_time_ms = 0
+        self.run.run_time_ms = 0
+        self.run.no_of_touches = 0
+        self.run.score_time_ms = 0
+        self.run.fastest_score_time_this_robot = -1
+        self.run.time_left_ms = self.run.entry_time_limit_s * 1000
+        self.run.no_of_runs_used = 0
+        self.run.robot_rank = 0
+        self.run.split_time_running = False
+        self.run.maze_time_running = False
+        self.display_refresh.hide_robot_runtimes = True

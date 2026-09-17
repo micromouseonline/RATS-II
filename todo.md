@@ -254,37 +254,51 @@ tidiness).
         `Disconnected` case, both outbound senders, and
         `configure_serial_port` against a real unopened `pyserial.Serial()`
         confirming the baud rate actually varies.
-  - [ ] **APP-1.7** — Headless app core: wires `.3`+`.4`+`.6` together
-        exactly as `parseData()`'s switch and the `*_message()` handlers do
-        — draining the queue, mutating state, triggering the same DB writes
-        on run completion. **Still no Tkinter at all.** Widened scope from
-        `APP-1.0`'s findings — this is not just the message-driven path:
-        - **Touch counting** (`Touch_Button_Click`): increments
-          `no_of_touches`, feeds directly into the `DB-5` score formula.
-        - **DNF** (`DNF_Button_Click`): a separate outcome path — confirm
-          dialog (UI-layer concern, not core) → on confirm,
-          `Entry.Outcome = "Retired"`, **no** `Best_Score_Time`/`Entry_Run`
-          row written, guarded by practice mode (no-op if practice mode on).
-        - **`clear_timer()` as one explicit state-object method** — resets
-          ~10 run-state fields together (`split_time_ms`, `maze_time_ms`,
-          `run_time_ms`, `no_of_touches`, `score_time_ms`,
-          `fastest_score_time_this_robot → -1`, `time_left_ms → entry_time_limit_s*1000`,
-          `no_of_runs_used → 0`, `robot_rank → 0`, both timer-running flags,
-          `hide_robot_runtimes → true`) — called by DNF, Clear, New Mouse,
-          and Practice Mode. Model as one method on the state object, not
-          scattered resets.
-        - **Shared "start new entry" function**: `NewMouse` (`<98,0>`) is
-          sent identically from 3 places in the legacy app (entry selection,
-          practice-mode toggle, explicit New Mouse button) — collapse to one
-          function in the port rather than duplicating.
-        **Success:** feed a scripted full-run message sequence (state
-        `2→3→4→5` with `C1SplitTime`/`C1RunTime`) through the core against a
-        scratch DB and assert the resulting `Entry_Run` row,
-        `Best_Score_Time` update, and rank all match expectations — **plus**
-        a run-with-touches case (`DB-5`'s score formula with
-        `no_of_touches > 0`) and a DNF case (assert `Outcome = "Retired"`,
-        no scoring row written). First true integration test of the whole
-        non-GUI pipeline, and the highest-value stage to get right.
+  - [x] **APP-1.7** — Headless app core: `contest_app/src/rats/core.py`'s
+        `AppCore`, wiring `.3`+`.4`+`.6` together exactly as `parseData()`'s
+        switch and the `*_message()` handlers do. **Still no Tkinter at
+        all.** Covers the widened scope from `APP-1.0`'s findings —
+        `touch()`, `dnf()` (guarded by practice mode, no scoring row
+        written, per legacy), `AppState.clear_timer()` as one method
+        (moved onto the state object per the plan here), and
+        `start_new_entry()` as the one shared `NewMouse` (`<98,0>`) +
+        `clear_timer()` primitive replacing 3 duplicated legacy call
+        sites — plus `select_competition()`/`select_entry()`/
+        `toggle_practice_mode()`/`new_mouse()` (needed to drive the
+        integration tests) and `drain_queue()`/`handle_queue_item()`
+        (`Line`/`Disconnected` dispatch, per `APP-1.6`). Sound and
+        outbound-write side effects surface through optional callbacks
+        (`on_sound`, `transport`) rather than being baked in — no audio
+        import, no real serial connection needed to test; actual playback
+        wiring is `APP-1.12`. **Extended `rats/state.py`**: `RunState`
+        gained `entry_time_limit_s`/`split_time_running`/
+        `maze_time_running`/the 3 `last_*_inserted` dedup fields, and a
+        new `ScoringConfig` group holds the `Scoring_Model` lookup —
+        fields `APP-1.3` deliberately left undecided pending this stage.
+        **Deliberately out of scope** (periodic-`Timer1_Tick`-driven, not
+        message-driven — `APP-1.8`'s job): the local time interpolation
+        ticking `split_time_ms`/`maze_time_ms` between real gate messages,
+        and the watchdog alarm's repeat-counter/sound.
+        **`Q-7` found and resolved** (user-confirmed): the decompiled code
+        compares `Touches_Enabled`/etc. literally against `-1`, but the
+        real backend data stores `1`/`0` — taken literally the touches
+        bonus would be permanently dead code. `ScoringConfig` treats these
+        as plain truthy flags instead, confirmed correct by the user
+        (touches are simply true/false) rather than a settled guess. A
+        related fact recorded but not implemented: the user believes a
+        touched entry should never out-rank an untouched entry on a tied
+        score, but "probably not in the code" either — `db.rank_of()`
+        doesn't consider touches; noted for later (`REG-*` or a future
+        revisit), not actioned now.
+        **Success:** `contest_app/tests/test_core.py`, 23 tests — the
+        three required cases (a full state `2→3→4→5` run with
+        `C1SplitTime`/`C1RunTime`, including the wire protocol's "send
+        `C1RunTime` 3×" case proving the dedup guard; a run-with-touches
+        case exercising `DB-5`'s score formula; a DNF case) against real
+        `sample_data/demo.db` entries/competitions, all matched against
+        `Entry_Run`, `Best_Score_Time`, and rank directly — plus discard-
+        guard cases and unit coverage for every other method. First true
+        integration test of the whole non-GUI pipeline.
   - [ ] **APP-1.8** — Main window: thin Tkinter wiring around `APP-1.7`'s
         core via `after()`-driven queue draining. **New vs. legacy: the
         port selector gets a baud-rate choice added alongside the COM port
@@ -556,6 +570,28 @@ more cleanly than in-place sanitization would have.
   not real aspect-ratio flexibility; (2) normalize field content across all
   layouts (the `16_9`-is-a-hybrid quirk was accidental, not worth
   preserving). See `APP-1.11`.
+- ~~**Q-7**~~ — **Resolved, user confirmation:** touches are simply
+  true/false — confirms `ScoringConfig`'s plain-truthy treatment
+  (`contest_app/src/rats/state.py`) over a literal `== -1` port of the
+  decompiled comparison. User's recollection: an entry that gets touched
+  *can* (but "probably" doesn't in practice) carry a score penalty. Found
+  during `APP-1.7`: the real backend data stores `Touches_Enabled`/
+  `Touches_Cumulative`/`Touches_Per_Run` as `1`/`0` (checked every
+  `Scoring_Model` row in `sample_data/demo.db`), never literal `-1` as the
+  C# comparison would require — whether that's a long-standing dead-code
+  bug in the legacy app or an Access/OLEDB runtime quirk invisible to the
+  exported data is now moot, since the port's own truthy semantics are
+  confirmed correct independent of that question.
+  **New, separate item raised alongside this** (not a resolution of Q-7,
+  a fact for the record): the user believes the *intended* rule is that a
+  touched entry should never be able to out-rank an untouched entry with
+  the same `Score_Time_mS` — but "probably not in the code" (i.e. neither
+  the legacy app nor this port currently enforces it; `db.rank_of()`'s
+  `<=` tie semantics, `plans/db-5-sql-rewrites.md`, don't consider
+  touches at all). Not implementing this now — no ticket, since it was
+  raised as background/context, not a change request — but worth
+  remembering if ranking/tie-breaking ever comes up again (`REG-*` phase,
+  or a future `APP-1.7` revisit).
 - ~~**Q-6**~~ — **Resolved, user correction during `APP-1.5`:** the real
   app's line-handling is stricter than the decompiled `parseData()` loop
   taken literally suggests. User's recollection, treated as a firm
