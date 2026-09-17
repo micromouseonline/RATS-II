@@ -158,14 +158,20 @@ tidiness).
         pytest-discoverable yet, per its own docstring; real tests start at
         `APP-1.2`). `contest_app/tests/README.md` updated with the venv
         setup steps.
-  - [ ] **APP-1.2** — Test scaffolding (`TEST-1`'s deliverable): in-memory
-        SQLite fixture built from `sample_data/demo.db` (already migrated —
-        `contest_app/tests/check_db5_rewrites.py` now points at `demo.db`,
-        not the git-ignored `live_data/rats.db`, so it actually runs on a
-        fresh clone); fake serial transport for scripted byte sequences
-        without hardware. **Success:** a trivial test using both fixtures
-        passes, and `check_db5_rewrites.py` is adapted to use the new
-        fixture helper rather than duplicating its own scratch-copy logic.
+  - [x] **APP-1.2** — Test scaffolding (`TEST-1`'s deliverable):
+        `contest_app/tests/dbfixture.py`'s `demo_db_connection()` builds an
+        **in-memory** SQLite copy of `sample_data/demo.db` per call (via
+        `sqlite3`'s backup API — no disk writes, no cross-test leakage);
+        `contest_app/tests/fake_serial.py`'s `FakeSerialTransport` scripts
+        `read()`/`in_waiting`/`close()`/`feed()` matching the slice of
+        pyserial's interface the future reader thread (`APP-1.6`) will use,
+        so byte sequences can be fed through without hardware. **Success:**
+        `contest_app/tests/test_fixtures.py` (4 tests, incl. an isolation
+        check) exercises both fixtures and passes; `check_db5_rewrites.py`
+        now calls `demo_db_connection()` instead of its own tempfile-copy
+        `scratch_copy()` — its original 7 tests still pass unchanged, both
+        standalone and via pytest, confirmed from both `contest_app/` and
+        the repo root.
   - [ ] **APP-1.3** — State object: the `Public_Variables` replacement —
         plain data, grouped logically, no behavior. **Success:** unit tests
         assert sensible defaults; constructing it needs no GUI/DB/serial

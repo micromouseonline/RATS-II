@@ -1,11 +1,12 @@
 """Rudimentary checks for the DB-5 Access -> SQLite SQL rewrites.
 
-Runs the rewritten queries (see ../../plans/db-5-sql-rewrites.md) against a
-scratch copy of sample_data/demo.db (a sanitized copy of the real data --
-REPO-2) and checks their results match what the original Access queries are
-known to do. Uses demo.db rather than the git-ignored live_data/rats.db so
-this test actually works on a fresh clone of the repo, not just machines
-that have the real data locally.
+Runs the rewritten queries (see ../../plans/db-5-sql-rewrites.md) against an
+in-memory copy of sample_data/demo.db (a sanitized copy of the real data --
+REPO-2, seeded via dbfixture.demo_db_connection(), APP-1.2) and checks their
+results match what the original Access queries are known to do. Uses
+demo.db rather than the git-ignored live_data/rats.db so this test actually
+works on a fresh clone of the repo, not just machines that have the real
+data locally.
 
 This is deliberately not a full pytest suite yet (see TEST-1 in
 ../../todo.md) -- just enough to prove the rewrites are correct before they
@@ -16,14 +17,9 @@ exists.
 Run directly:
     python3 contest_app/tests/check_db5_rewrites.py
 """
-import shutil
-import sqlite3
-import tempfile
 import unittest
-from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DEMO_DB = REPO_ROOT / "sample_data" / "demo.db"
+from dbfixture import demo_db_connection
 
 BACKFILL_NAIVE_SQL = """
     UPDATE Best_Score_Time
@@ -64,21 +60,11 @@ RANK_SQL = """
 """
 
 
-def scratch_copy():
-    """Copy demo.db to a temp file and return an open connection to it."""
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    tmp.close()
-    shutil.copyfile(DEMO_DB, tmp.name)
-    conn = sqlite3.connect(tmp.name)
-    conn.execute("PRAGMA foreign_keys = OFF")
-    return conn
-
-
 class BackfillRewriteTests(unittest.TestCase):
     """DB-5.1: the Name_contestants_Button_Click backfill UPDATE."""
 
     def setUp(self):
-        self.conn = scratch_copy()
+        self.conn = demo_db_connection()
 
     def tearDown(self):
         self.conn.close()
@@ -143,7 +129,7 @@ class RankRewriteTests(unittest.TestCase):
     """DB-5.2: the leaderboard rank query."""
 
     def setUp(self):
-        self.conn = scratch_copy()
+        self.conn = demo_db_connection()
 
     def tearDown(self):
         self.conn.close()
