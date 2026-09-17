@@ -215,13 +215,22 @@ tidiness).
         referenced from closed `DB-5`/`REPO-4` history, not worth rewriting)
         but now calls `db.backfill_contestant_names()`/`db.rank_of()`
         instead of duplicating their SQL; its own 7 tests still pass.
-  - [ ] **APP-1.5** — Serial frame parser: pure function, `<code,payload>`
-        buffer-scanning (matching legacy's approach) → structured `Message`
-        objects for the 21 in-scope codes, including value scaling (`*100`,
-        `*10`, etc.) from `parseData()`. No I/O, no threading. **Success:**
-        unit tests cover a frame split across two reads, multiple frames in
-        one read, leading garbage, plus one test per message code for
-        correct value parsing.
+  - [x] **APP-1.5** — Serial frame parser: `contest_app/src/rats/serial_protocol.py`,
+        pure functions, no I/O/threading. Line-based (`\n`-terminated),
+        **not** the literal bracket-hunting-across-an-arbitrary-buffer
+        approach `parseData()` uses — changed per `Q-6` (user correction):
+        a line not starting with `<` is totally ignored, everything after
+        the closing `>` on a line is ignored (one message per line max),
+        and every raw line survives (via `Line`) for a later logging layer
+        to record regardless of parse outcome. `parse_message()` covers all
+        19 inbound codes' value scaling (`*100`/`*10`/none per code, per
+        `parseData()`'s handlers) plus the boolean trigger codes and a
+        lenient VB-`Val()`-alike numeric parse; `format_new_mouse()`/
+        `format_set_mode()` cover the 2 outbound codes. **Success:**
+        `contest_app/tests/test_serial_protocol.py`, 36 tests — a line
+        split across two reads, multiple lines in one read, CRLF handling,
+        the `Q-6` garbage-line-not-recovered case, one test per inbound
+        code, plus the outbound formatters.
   - [ ] **APP-1.6** — Serial transport: reader thread + `queue.Queue`, per
         `plans/arch-1-concurrency.md`, wrapping `APP-1.5`'s parser and either
         real `pyserial` or `APP-1.2`'s fake transport. Connection setup
@@ -528,3 +537,19 @@ more cleanly than in-place sanitization would have.
   not real aspect-ratio flexibility; (2) normalize field content across all
   layouts (the `16_9`-is-a-hybrid quirk was accidental, not worth
   preserving). See `APP-1.11`.
+- ~~**Q-6**~~ — **Resolved, user correction during `APP-1.5`:** the real
+  app's line-handling is stricter than the decompiled `parseData()` loop
+  taken literally suggests. User's recollection, treated as a firm
+  requirement regardless of whether it was originally deliberate or
+  incidental: (1) a line whose first character isn't `<` is **totally
+  ignored**, not scanned for an embedded frame elsewhere in the line; (2)
+  everything after the closing `>` on a line is ignored — at most one
+  message per line; (3) **every** input line must remain available to log
+  as a permanent record, whether or not it parses to a message. Changed
+  `contest_app/src/rats/serial_protocol.py` from continuous
+  bracket-hunting across an arbitrary buffer (which could recover a valid
+  frame following leading garbage on the same line — no longer allowed) to
+  splitting on `\n` first, then parsing each isolated line; added `Line`
+  (raw text + parsed `Message` or `None`) so a later logging layer
+  (`APP-1.6`/`APP-1.8`) can log every line without this pure-parsing layer
+  dropping any of them. See `APP-1.5`.
