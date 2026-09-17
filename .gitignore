@@ -1,0 +1,13 @@
+# Real competition data - never goes to version control (REPO-1, see todo.md)
+/live_data/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# OS cruft
+.DS_Store

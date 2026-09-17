@@ -1,0 +1,193 @@
+digraph RATS_ERD {
+  graph [rankdir=LR, splines=ortho, nodesep=0.6, ranksep=1.0, fontname="Helvetica", label="RATS Competitions - Entity Relationship Diagram\nGenerated from RATS_Competitions_be.accdb (live data export, 2026-09-16)", labelloc=t, fontsize=16];
+  node [shape=plain, fontname="Helvetica"];
+  edge [fontname="Helvetica", fontsize=9, arrowhead=none, arrowtail=none, color="#555555"];
+
+  // ---- core tables ----
+
+  Contestant [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Contestant</b></font></td></tr>
+      <tr><td align="left" port="Contestant_ID"><u><b>Contestant_ID</b></u></td></tr>
+      <tr><td align="left">Contestant_Name</td></tr>
+      <tr><td align="left">Class</td></tr>
+      <tr><td align="left">Contestant_Email_Address</td></tr>
+    </table>>];
+
+  Mouse [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Mouse</b></font></td></tr>
+      <tr><td align="left" port="Mouse_ID"><u><b>Mouse_ID</b></u></td></tr>
+      <tr><td align="left" port="Mouse_Name">Mouse_Name</td></tr>
+      <tr><td align="left" port="Contestant_ID">Contestant_ID</td></tr>
+      <tr><td align="left">Further_Information</td></tr>
+    </table>>];
+
+  Entry [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Entry</b></font></td></tr>
+      <tr><td align="left" port="Entry_ID"><u><b>Entry_ID</b></u></td></tr>
+      <tr><td align="left" port="Mouse_Name">Mouse_Name</td></tr>
+      <tr><td align="left" port="Competition_ID">Competition_ID</td></tr>
+      <tr><td align="left">Entry_Used</td></tr>
+      <tr><td align="left">Sequence_Number</td></tr>
+      <tr><td align="left">Registration_Source</td></tr>
+      <tr><td align="left">Outcome</td></tr>
+    </table>>];
+
+  Entry_Run [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Entry_Run</b></font></td></tr>
+      <tr><td align="left"><u><b>Entry_Run_ID</b></u></td></tr>
+      <tr><td align="left" port="Entry_ID">Entry_ID</td></tr>
+      <tr><td align="left">Run_Time_mSecs</td></tr>
+      <tr><td align="left">Course_Time_mSecs</td></tr>
+      <tr><td align="left">Touches</td></tr>
+      <tr><td align="left">Score_Time_mSecs</td></tr>
+      <tr><td align="left">Date_of_Run</td></tr>
+      <tr><td align="left">Time_of_Run</td></tr>
+      <tr><td align="left">Manual_Timing</td></tr>
+    </table>>];
+
+  Best_Score_Time [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Best_Score_Time</b></font></td></tr>
+      <tr><td align="left"><u><b>ID</b></u></td></tr>
+      <tr><td align="left" port="Entry_ID">Entry_ID</td></tr>
+      <tr><td align="left">Mouse_Name</td></tr>
+      <tr><td align="left">Contestant_Name</td></tr>
+      <tr><td align="left">Contestant_Class</td></tr>
+      <tr><td align="left">Score_Time_mS</td></tr>
+      <tr><td align="left">Run_Time_mS</td></tr>
+      <tr><td align="left" port="Competition_ID">Competition_ID</td></tr>
+    </table>>];
+
+  Competition [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Competition</b></font></td></tr>
+      <tr><td align="left" port="Competition_ID"><u><b>Competition_ID</b></u></td></tr>
+      <tr><td align="left" port="Event_ID">Event_ID</td></tr>
+      <tr><td align="left">Competition_Name</td></tr>
+      <tr><td align="left" port="Challenge">Challenge</td></tr>
+      <tr><td align="left">Competition_Class</td></tr>
+      <tr><td align="left">Competition_Date</td></tr>
+      <tr><td align="left" port="Scoring_Model_Short_Name">Scoring_Model_Short_Name</td></tr>
+      <tr><td align="left">Entry_Time_Limit_Secs</td></tr>
+      <tr><td align="left" port="Competition_Structure_Name">Competition_Structure_Name</td></tr>
+      <tr><td align="left">Number_of_Runs_Allowed</td></tr>
+      <tr><td align="left">Grace_Period_Secs</td></tr>
+    </table>>];
+
+  Robotics_Event [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Robotics_Event</b></font></td></tr>
+      <tr><td align="left" port="Event_ID"><u><b>Event_ID</b></u></td></tr>
+      <tr><td align="left">Event_Name</td></tr>
+      <tr><td align="left">Event_Date</td></tr>
+      <tr><td align="left">Database_Version</td></tr>
+    </table>>];
+
+  Challenge [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Challenge</b></font></td></tr>
+      <tr><td align="left"><u><b>Challenge_ID</b></u></td></tr>
+      <tr><td align="left" port="Challenge_Type">Challenge_Type</td></tr>
+    </table>>];
+
+  Scoring_Model [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Scoring_Model</b></font></td></tr>
+      <tr><td align="left"><u><b>ID</b></u></td></tr>
+      <tr><td align="left" port="Scoring_Model_Short_Name">Scoring_Model_Short_Name</td></tr>
+      <tr><td align="left">Scoring_Model_Name</td></tr>
+      <tr><td align="left">Start_Trigger</td></tr>
+      <tr><td align="left">End_Trigger</td></tr>
+      <tr><td align="left">Touches_Enabled</td></tr>
+      <tr><td align="left">Touches_Cumulative</td></tr>
+      <tr><td align="left">Touch_Time_mS</td></tr>
+      <tr><td align="left">Entry_Time_Divider</td></tr>
+      <tr><td align="left">Touch_Time_Divider</td></tr>
+      <tr><td align="left">Touches_Per_Run</td></tr>
+    </table>>];
+
+  Competition_Structure [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Competition_Structure</b></font></td></tr>
+      <tr><td align="left"><u><b>ID</b></u></td></tr>
+      <tr><td align="left" port="Competition_Structure_Name">Competition_Structure_Name</td></tr>
+    </table>>];
+
+  Context [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#1F3864"><font color="white"><b>Context</b></font></td></tr>
+      <tr><td align="left"><u><b>ID</b></u></td></tr>
+      <tr><td align="left">Effective_Date</td></tr>
+      <tr><td align="left">Current_Event</td></tr>
+      <tr><td align="left" port="Current_Event_ID">Current_Event_ID</td></tr>
+      <tr><td align="left">Current_Competition_Name</td></tr>
+      <tr><td align="left">Database_Version</td></tr>
+    </table>>];
+
+  // ---- ETL staging tables (empty; mirror the shape of the tables they feed) ----
+
+  ETL_Contestant [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#8496B0"><font color="white"><b>ETL_Contestant</b></font></td></tr>
+      <tr><td align="left">Contestant_ID</td></tr>
+      <tr><td align="left">Contestant_Name</td></tr>
+      <tr><td align="left">Class</td></tr>
+      <tr><td align="left">Contestant_Email_Address</td></tr>
+    </table>>];
+
+  ETL_Mouse [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#8496B0"><font color="white"><b>ETL_Mouse</b></font></td></tr>
+      <tr><td align="left">Mouse_ID</td></tr>
+      <tr><td align="left">Mouse_Name</td></tr>
+      <tr><td align="left">Contestant_ID</td></tr>
+      <tr><td align="left">Further_Information</td></tr>
+    </table>>];
+
+  ETL_Entry [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#8496B0"><font color="white"><b>ETL_Entry</b></font></td></tr>
+      <tr><td align="left">Entry_ID</td></tr>
+      <tr><td align="left">Mouse_Name</td></tr>
+      <tr><td align="left">Competition_ID</td></tr>
+      <tr><td align="left">Entry_Used</td></tr>
+      <tr><td align="left">Sequence_Number</td></tr>
+    </table>>];
+
+  ETL_seeding_upload [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#8496B0"><font color="white"><b>ETL_seeding_upload</b></font></td></tr>
+      <tr><td align="left">ID</td></tr>
+      <tr><td align="left">Entry_ID</td></tr>
+      <tr><td align="left">Mouse_Name</td></tr>
+      <tr><td align="left">Competition_ID</td></tr>
+      <tr><td align="left">Sequence_Number</td></tr>
+    </table>>];
+
+  // ---- relationships ----
+  // solid = ID-based join, dashed = informal join on a text/name field
+
+  Contestant:Contestant_ID -> Mouse:Contestant_ID [style=solid];
+  Mouse:Mouse_Name -> Entry:Mouse_Name [style=dashed, label="text join"];
+  Entry:Entry_ID -> Entry_Run:Entry_ID [style=solid];
+  Entry:Entry_ID -> Best_Score_Time:Entry_ID [style=solid];
+  Entry:Competition_ID -> Competition:Competition_ID [style=solid];
+  Competition:Event_ID -> Robotics_Event:Event_ID [style=solid];
+  Competition:Challenge -> Challenge:Challenge_Type [style=dashed, label="text join"];
+  Competition:Scoring_Model_Short_Name -> Scoring_Model:Scoring_Model_Short_Name [style=dashed, label="text join"];
+  Competition:Competition_Structure_Name -> Competition_Structure:Competition_Structure_Name [style=dashed, label="text join"];
+  Context:Current_Event_ID -> Robotics_Event:Event_ID [style=dashed, label="informal"];
+
+  // ETL staging tables mirror the shape of their target table (no live FK; populated then merged during import)
+  ETL_Contestant -> Contestant [style=dotted, color="#999999", label="mirrors", fontcolor="#999999"];
+  ETL_Mouse -> Mouse [style=dotted, color="#999999", label="mirrors", fontcolor="#999999"];
+  ETL_Entry -> Entry [style=dotted, color="#999999", label="mirrors", fontcolor="#999999"];
+  ETL_seeding_upload -> Entry [style=dotted, color="#999999", label="mirrors", fontcolor="#999999"];
+
+  { rank=same; Contestant; Mouse; Entry; Entry_Run; }
+  { rank=same; Competition; Robotics_Event; Challenge; Scoring_Model; Competition_Structure; }
+}

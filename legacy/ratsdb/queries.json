@@ -1,0 +1,218 @@
+{
+  "~sq_cEntry_form~sq_cEntry Display Query subform": {
+    "kind": "procedure (action query)",
+    "sql": "PARAMETERS __Mouse_Name Value;\r\nSELECT DISTINCTROW *\r\nFROM (SELECT [Entry Display Query].Entry_ID, [Entry Display Query].Mouse_Name, [Entry Display Query].Competition_Challenge, [Entry Display Query].Competition_Competition_Class, [Entry Display Query].Competition_Competition_Name FROM [Entry Display Query])  AS Entry_form\r\nWHERE ([__Mouse_Name] = Mouse_Name);\r\n"
+  },
+  "~sq_cNew Contest~sq_cTodays_Competitions subform": {
+    "kind": "procedure (action query)",
+    "sql": "PARAMETERS __Event_ID Value;\r\nSELECT DISTINCTROW *\r\nFROM (SELECT Todays_Competitions.Competition_Name, Todays_Competitions.Event_ID, Todays_Competitions.Competition_Class FROM Todays_Competitions)  AS [New Contest]\r\nWHERE ([__Event_ID] = Event_ID);\r\n"
+  },
+  "~sq_cSequence_Competitions~sq_cEntry Subform": {
+    "kind": "procedure (action query)",
+    "sql": "PARAMETERS __Competition_ID Value;\r\nSELECT DISTINCTROW *\r\nFROM Entry AS Sequence_Competitions\r\nWHERE ([__Competition_ID] = Competition_ID);\r\n"
+  },
+  "~sq_fContestant": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT DISTINCTROW *\r\nFROM Contestant;\r\n"
+  },
+  "~sq_fContext_Form": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT DISTINCTROW *\r\nFROM Robotics_Event;\r\n"
+  },
+  "~sq_fScoring_Model": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT DISTINCTROW *\r\nFROM Scoring_Model;\r\n"
+  },
+  "Add_Sequence_No_To_Entries": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Entry INNER JOIN ETL_seeding_upload ON Entry.[Entry_ID] = ETL_seeding_upload.[Entry_ID] SET Entry.Sequence_Number = [ETL_seeding_upload].[Sequence_Number]\r\nWHERE (Entry.Mouse_Name = ETL_seeding_upload.Mouse_Name);\r\n"
+  },
+  "Append_ETL_Best_Score_Time": {
+    "kind": "procedure (action query)",
+    "sql": "INSERT INTO Best_Score_Time ( Entry_ID, Mouse_Name, Contestant_Name, Contestant_Class, Score_Time_mS, Run_Time_mS, Competition_ID )\r\nSELECT ETL_Best_Score_Time.Entry_ID, ETL_Best_Score_Time.Mouse_Name, ETL_Best_Score_Time.Contestant_Name, ETL_Best_Score_Time.Contestant_Class, ETL_Best_Score_Time.Score_Time_mS, ETL_Best_Score_Time.Run_Time_mS, ETL_Best_Score_Time.Competition_ID\r\nFROM ETL_Best_Score_Time;\r\n"
+  },
+  "Append_ETL_Entry_Run": {
+    "kind": "procedure (action query)",
+    "sql": "INSERT INTO Entry_Run ( Entry_ID, Run_Time_mSecs, Course_Time_mSecs, Touches, Score_Time_mSecs, Date_of_Run, Time_of_Run, Manual_Timing )\r\nSELECT ETL_Entry_Run.Entry_ID, ETL_Entry_Run.Run_Time_mSecs, ETL_Entry_Run.Course_Time_mSecs, ETL_Entry_Run.Touches, ETL_Entry_Run.Score_Time_mSecs, ETL_Entry_Run.Date_of_Run, ETL_Entry_Run.Time_of_Run, ETL_Entry_Run.Manual_Timing\r\nFROM ETL_Entry_Run;\r\n"
+  },
+  "Best_Score_Times_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Best_Score_Time.ID, Best_Score_Time.Entry_ID, Best_Score_Time.Mouse_Name, Best_Score_Time.Contestant_Name, Best_Score_Time.Contestant_Class, Best_Score_Time.Score_Time_mS, Best_Score_Time.Run_Time_mS, Best_Score_Time.Competition_ID, Competition.Competition_Name, Competition.Challenge, Competition.Competition_Class, Competition.Event_ID\r\nFROM Competition INNER JOIN Best_Score_Time ON Competition.[Competition_ID] = Best_Score_Time.[Competition_ID]\r\nWHERE (((Competition.Event_ID)=[Forms]![Context_Form]![Event_ID]));\r\n"
+  },
+  "Best_Scores_for_selected_Competition": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Best_Score_Time.Entry_ID, Best_Score_Time.Mouse_Name, Best_Score_Time.Contestant_Name, Best_Score_Time.Contestant_Class, Best_Score_Time.Score_Time_mS, Best_Score_Time.Run_Time_mS, Best_Score_Time.Competition_ID\r\nFROM Best_Score_Time\r\nWHERE (Best_Score_Time.Competition_ID = [Comp_ID]);\r\n"
+  },
+  "Check_Retirements": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Entry.*, Best_Score_Time.Score_Time_mS, Best_Score_Time.Run_Time_mS\r\nFROM Entry LEFT JOIN Best_Score_Time ON Entry.Entry_ID = Best_Score_Time.Entry_ID\r\nWHERE (((Entry.Competition_ID) IN (SELECT Competition_ID FROM Competition WHERE Competition.Event_ID = [Forms]![Context_Form]![Event_ID])));\r\n"
+  },
+  "Clear_ETL_seeding_upload": {
+    "kind": "procedure (action query)",
+    "sql": "DELETE ETL_seeding_upload.Entry_ID\r\nFROM ETL_seeding_upload;\r\n"
+  },
+  "Clear_Unnamed_Entries": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Entry INNER JOIN Best_Score_Time ON Entry.Entry_ID = Best_Score_Time.Entry_ID SET Entry.Entry_Used = False\r\nWHERE Best_Score_Time.Contestant_Class = \"_\";\r\n"
+  },
+  "Competitions_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Competition.Competition_ID, Competition.Event_ID, Competition.Competition_Name, Competition.Challenge, Competition.Competition_Class, Competition.Competition_Date, Competition.Scoring_Model_Short_Name, Competition.Entry_Time_Limit_Secs\r\nFROM Competition\r\nWHERE (((Competition.Event_ID)=[Forms]![Context_Form]![Event_ID]));\r\n"
+  },
+  "Copy Of Best_Score_Times_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Best_Score_Time.ID, Best_Score_Time.Entry_ID, Best_Score_Time.Mouse_Name, Best_Score_Time.Contestant_Name, Best_Score_Time.Contestant_Class, Best_Score_Time.Score_Time_mS, Best_Score_Time.Run_Time_mS, Best_Score_Time.Competition_ID, Competition.Competition_Name, Competition.Challenge, Competition.Competition_Class, Competition.Event_ID, Context.Current_Event\r\nFROM Context INNER JOIN (Competition INNER JOIN Best_Score_Time ON Competition.[Competition_ID] = Best_Score_Time.[Competition_ID]) ON Context.Current_Event_ID = Competition.Event_ID;\r\n"
+  },
+  "Delete_Unnamed_Best_Scores": {
+    "kind": "procedure (action query)",
+    "sql": "DELETE *\r\nFROM Best_Score_Time\r\nWHERE Best_Score_Time.Contestant_Class = \"_\";\r\n"
+  },
+  "Delete_Unnamed_Entry_Runs": {
+    "kind": "procedure (action query)",
+    "sql": "DELETE *\r\nFROM Entry_Run\r\nWHERE (Entry_Run.Entry_ID IN (SELECT  Best_Score_Time.Entry_ID FROM Best_Score_Time WHERE Best_Score_Time.Contestant_Class = \"_\"));\r\n"
+  },
+  "Entries_Extract_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT;\r\n"
+  },
+  "Entries_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Entry.Entry_ID, [Mouse Query].Class, [Mouse Query].Contestant_Name, Entry.Mouse_Name, Entry.Competition_ID, Entry.Entry_Used, Competition.Competition_Name, Competition.Challenge, Competition.Competition_Class, Entry.Registration_Source, Entry.Sequence_Number\r\nFROM (Competition INNER JOIN Entry ON Competition.[Competition_ID] = Entry.[Competition_ID]) INNER JOIN [Mouse Query] ON Entry.Mouse_Name = [Mouse Query].Mouse_Name\r\nWHERE (((Competition.Event_ID)=[Forms]![Context_Form]![Event_ID]))\r\nORDER BY [Mouse Query].Contestant_Name, Entry.Mouse_Name, Competition.Competition_Class;\r\n"
+  },
+  "Entry Display Query": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Entry.Entry_ID, Entry.Mouse_Name, Entry.Competition_ID AS Entry_Competition_ID, Competition.Event_ID, Competition.Challenge AS Competition_Challenge, Competition.Competition_Class AS Competition_Competition_Class, Competition.Competition_Date AS Competition_Competition_Date, Competition.Competition_Name AS Competition_Competition_Name\r\nFROM Competition INNER JOIN Entry ON Competition.[Competition_ID] = Entry.[Competition_ID]\r\nWHERE Competition.Event_ID=Forms![Context_Form].Event_ID;\r\n"
+  },
+  "Entry Form Query": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Entry.Entry_ID, Entry.Mouse_Name, Entry.Competition_ID AS Entry_Competition_ID, Competition.Competition_ID AS Competition_Competition_ID, Competition.Event_ID, Competition.Competition_Name, Competition.Challenge AS Competition_Challenge, Competition.Competition_Class AS Competition_Competition_Class, Competition.Competition_Date AS Competition_Competition_Date, Entry.Registration_Source, Contestant.Contestant_Name\r\nFROM Contestant INNER JOIN (Mouse INNER JOIN (Competition INNER JOIN Entry ON Competition.[Competition_ID] = Entry.[Competition_ID]) ON Mouse.Mouse_Name = Entry.Mouse_Name) ON Contestant.Contestant_ID = Mouse.Contestant_ID;\r\n"
+  },
+  "event_results": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Best_Score_Time.ID, Context.Current_Event, Competition.Challenge, Best_Score_Time.Contestant_Class, Competition.Competition_Class, Competition.Competition_Name, Best_Score_Time.Mouse_Name, Best_Score_Time.Contestant_Name, Best_Score_Time.Score_Time_mS\r\nFROM Context INNER JOIN (Competition INNER JOIN Best_Score_Time ON Competition.[Competition_ID] = Best_Score_Time.[Competition_ID]) ON Context.Current_Event_ID = Competition.Event_ID\r\nORDER BY Competition.Challenge, Best_Score_Time.Contestant_Class, Competition.Competition_Class DESC , Best_Score_Time.Score_Time_mS;\r\n"
+  },
+  "Extended_Entries_Extract_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Entry.Entry_ID, Entry.Mouse_Name AS Robot, Entry.Competition_ID AS C_ID, Competition.Competition_Name AS Contest, Competition.Challenge AS Challenge, Competition.Competition_Class AS Class, Entry.Registration_Source AS Source, Contestant.Contestant_Name AS Contestant, Contestant.Class AS Cont_Level, Mouse.Further_Information AS Team_Information\r\nFROM Contestant INNER JOIN (Mouse INNER JOIN (Competition INNER JOIN Entry ON Competition.[Competition_ID] = Entry.[Competition_ID]) ON Mouse.Mouse_Name = Entry.Mouse_Name) ON Contestant.Contestant_ID = Mouse.Contestant_ID\r\nWHERE (((Competition.Event_ID)=[Forms]![Context_Form]![Event_ID]));\r\n"
+  },
+  "Fix_Populate_Competition_Name": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Competition SET Competition.Competition_Name = Competition.Challenge;\r\n"
+  },
+  "Fix_Populate_Competition_Structure": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Competition SET Competition.Competition_Structure_Name = 'Single Phase';\r\n"
+  },
+  "Get_Contestant_From_Mouse": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Contestant.Contestant_Name\r\nFROM Contestant INNER JOIN Mouse ON Contestant.Contestant_ID = Mouse.Contestant_ID\r\nWHERE (((Mouse.Mouse_Name)=\"Asymouse\"));\r\n"
+  },
+  "Get_Entries_for_a_Contest": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Entry.Entry_ID, Entry.Mouse_Name, Entry.Competition_ID, Entry.Sequence_Number\r\nFROM Entry\r\nWHERE (((Entry.Competition_ID)=[Entry_Contest_ID]));\r\n"
+  },
+  "Get_entry_form_challenge": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Todays_Competitions.Challenge\r\nFROM Todays_Competitions\r\nWHERE Todays_Competitions.Challenge_ID = Entry_form!Competition_ID_Combo;\r\n"
+  },
+  "Get_mice_names": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Mouse.Mouse_Name\r\nFROM Mouse\r\nORDER BY Mouse.Mouse_Name;\r\n"
+  },
+  "Get_Scores_for_a_Contest": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Best_Score_Time.Competition_ID, Best_Score_Time.Mouse_Name, Best_Score_Time.Score_Time_mS\r\nFROM Best_Score_Time\r\nWHERE (((Best_Score_Time.Competition_ID)=[Result_Contest_ID]))\r\nORDER BY Best_Score_Time.Score_Time_mS DESC;\r\n"
+  },
+  "Insert_Manual_Best_Time": {
+    "kind": "procedure (action query)",
+    "sql": "INSERT INTO Best_Score_Time ( Entry_ID, Run_Time_mS, Score_Time_mS, Mouse_Name, Contestant_Name, Contestant_Class )\r\nVALUES (Forms![Manual_Timing_Entry_Run].Entry_ID, Forms![Manual_Timing_Entry_Run].Run_Time_mSecs, Forms![Manual_Timing_Entry_Run].Score_Time_mSecs, \"_\", \"_\", \"_\");\r\n"
+  },
+  "Manual_Set_Entry_Used": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Entry SET Entry.Entry_Used = TRUE, Entry.Outcome = \"Successful\"\r\nWHERE (Entry.Entry_ID = FORMS![Manual_Timing_Entry_Run].[Entry_ID]);\r\n"
+  },
+  "Mouse Query": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Mouse.Mouse_Name, Contestant.Contestant_Name, Contestant.Class, Contestant.Contestant_Email_Address\r\nFROM Contestant INNER JOIN Mouse ON Contestant.Contestant_ID = Mouse.Contestant_ID;\r\n"
+  },
+  "Patch_Successful_Entry_Outcome": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Check_Retirements SET Check_Retirements.Outcome = \"Successful\"\r\nWHERE ((Check_Retirements.Score_Time_mS > 0));\r\n"
+  },
+  "Populate_Best_Score_Contestants": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Best_Score_Time, Contestant INNER JOIN Mouse ON Contestant.Contestant_ID = Mouse.Contestant_ID SET Best_Score_Time.Contestant_Name = [Contestant].[Contestant_Name], Best_Score_Time.Contestant_Class = [Contestant].[Class]\r\nWHERE (((Best_Score_Time.Mouse_Name)=[Mouse].[Mouse_Name]) AND (Best_Score_Time.Contestant_Name = \"_\"));\r\n"
+  },
+  "Populate_Manual_Best_Score_Mouse_and_Competition": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Best_Score_Time INNER JOIN Entry ON Best_Score_Time.[Entry_ID] = Entry.[Entry_ID] SET Best_Score_Time.Competition_ID = [Entry].[Competition_ID], Best_Score_Time.Mouse_Name = Entry.[Mouse_Name]\r\nWHERE (Best_Score_Time.Mouse_Name = \"_\");\r\n"
+  },
+  "Rank_Query": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Rank\r\nFROM (SELECT Mouse_Name, (SELECT COUNT(T1.Score_Time_mS) FROM (SELECT Best_Score_Time.Entry_ID, Best_Score_Time.Mouse_Name, Best_Score_Time.Contestant_Name, Best_Score_Time.Contestant_Class, Best_Score_Time.Score_Time_mS, Best_Score_Time.Run_Time_mS, Best_Score_Time.Competition_ID FROM Best_Score_Time WHERE (Best_Score_Time.Competition_ID = [Comp_ID])) AS T1 WHERE T1.Score_Time_mS <= T2.Score_Time_mS) AS Rank FROM (SELECT Best_Score_Time.Entry_ID, Best_Score_Time.Mouse_Name, Best_Score_Time.Contestant_Name, Best_Score_Time.Contestant_Class, Best_Score_Time.Score_Time_mS, Best_Score_Time.Run_Time_mS, Best_Score_Time.Competition_ID FROM Best_Score_Time WHERE (Best_Score_Time.Competition_ID = [Comp_ID]))  AS T2 ORDER BY Score_Time_mS)  AS [%$##@_Alias]\r\nWHERE (Mouse_Name = [Mouse]);\r\n"
+  },
+  "Robot_Score_Times_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Entry.Mouse_Name, Entry.Outcome, Entry.Competition_ID, Entry.Entry_ID, Best_Score_Time.ID, Best_Score_Time.Contestant_Name, Best_Score_Time.Contestant_Class, Best_Score_Time.Score_Time_mS, Best_Score_Time.Run_Time_mS\r\nFROM Entry LEFT JOIN Best_Score_Time ON Entry.Entry_ID = Best_Score_Time.Entry_ID;\r\n"
+  },
+  "Run_Times_for_all_Events": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Competition.Challenge, Competition.Competition_Class, Competition.Competition_Name, Entry.Mouse_Name, Contestant.Contestant_Name, Contestant.Class, Entry_Run.Run_Time_mSecs, Entry_Run.Course_Time_mSecs, Entry_Run.Touches, Entry_Run.Score_Time_mSecs, Entry_Run.Date_of_Run, Entry_Run.Time_of_Run\r\nFROM Competition INNER JOIN ((Contestant INNER JOIN Mouse ON Contestant.Contestant_ID = Mouse.Contestant_ID) INNER JOIN (Entry_Run INNER JOIN Entry ON Entry_Run.Entry_ID = Entry.Entry_ID) ON Mouse.Mouse_Name = Entry.Mouse_Name) ON Competition.Competition_ID = Entry.Competition_ID;\r\n"
+  },
+  "Run_Times_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Competition.Challenge, Competition.Competition_Class, Competition.Competition_Name, Entry.Mouse_Name, Contestant.Contestant_Name, Contestant.Class, Entry_Run.Run_Time_mSecs, Entry_Run.Course_Time_mSecs, Entry_Run.Touches, Entry_Run.Score_Time_mSecs, Entry_Run.Date_of_Run, Entry_Run.Time_of_Run\r\nFROM Competition INNER JOIN ((Contestant INNER JOIN Mouse ON Contestant.Contestant_ID = Mouse.Contestant_ID) INNER JOIN (Entry_Run INNER JOIN Entry ON Entry_Run.Entry_ID = Entry.Entry_ID) ON Mouse.Mouse_Name = Entry.Mouse_Name) ON Competition.Competition_ID = Entry.Competition_ID\r\nWHERE (((Competition.Event_ID)=[forms]![Context_Form]![Event_ID]));\r\n"
+  },
+  "Set_Entry_Used_for_ETL_Best_Scores": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Entry SET Entry.Entry_Used = TRUE, Entry.Outcome = \"Successful\"\r\nWHERE (Entry.Entry_ID IN (SELECT  ETL_Best_Score_Time.Entry_ID FROM ETL_Best_Score_Time));\r\n"
+  },
+  "Show_Unnamed_Best_Scores": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT *\r\nFROM Best_Score_Time\r\nWHERE Best_Score_Time.Contestant_Class = \"_\";\r\n"
+  },
+  "Show_Unnamed_Entry_Runs": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT *\r\nFROM Entry_Run\r\nWHERE (Entry_Run.Entry_ID IN (SELECT  Best_Score_Time.Entry_ID FROM Best_Score_Time WHERE Best_Score_Time.Contestant_Class = \"_\"));\r\n"
+  },
+  "Show_Unnamed_Used_Entries": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT *\r\nFROM Entry INNER JOIN Best_Score_Time ON Entry.Entry_ID = Best_Score_Time.Entry_ID\r\nWHERE Best_Score_Time.Contestant_Class = \"_\";\r\n"
+  },
+  "Todays_Competitions": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Competition.*\r\nFROM Competition\r\nWHERE Competition.Event_ID=Forms![Context_Form].Event_ID;\r\n"
+  },
+  "Todays_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Robotics_Event.Event_ID, Robotics_Event.Event_Name, Robotics_Event.Event_Date\r\nFROM Robotics_Event\r\nWHERE Robotics_Event.Event_Date IN (SELECT Context.Effective_Date FROM Context);\r\n"
+  },
+  "Todays_Finals": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Competition.Competition_Name, Competition.Competition_Class, Competition.Event_ID, Competition.Competition_ID\r\nFROM Competition\r\nWHERE ((Competition.Competition_Class = \"Final\") AND (Competition.Event_ID=[Forms]![Context_Form]!Event_ID));\r\n"
+  },
+  "Todays_Heats": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Competition.Competition_Name, Competition.Competition_Class, Competition.Event_ID, Competition.Competition_ID\r\nFROM Competition\r\nWHERE ((Competition.Competition_Class = \"Heats\") AND (Competition.Event_ID=[Forms]![Context_Form]!Event_ID));\r\n"
+  },
+  "Unused_Entries_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Entry.Entry_ID, Entry.Mouse_Name, Entry.Competition_ID, Entry.Entry_Used, Competition.Challenge, Competition.Competition_Class\r\nFROM Competition INNER JOIN Entry ON Competition.[Competition_ID] = Entry.[Competition_ID]\r\nWHERE (((Competition.Event_ID)=[Forms]![Context_Form]![Event_ID]) AND (Entry.Entry_Used = FALSE));\r\n"
+  },
+  "Update_Saved_Context": {
+    "kind": "procedure (action query)",
+    "sql": "UPDATE Context SET Context.Effective_Date = [Forms]![Context_Form]![Event_Date], Context.Current_Event = [Forms]![Context_Form]![Event_Name], Context.Current_Event_ID = [Forms]![Context_Form]![Event_ID], Context.Database_Version = [Forms]![Context_Form]![Database_Version]\r\nWHERE (((Context.ID)=1));\r\n"
+  },
+  "Used_Entries_Contest_Name_Scores_Current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Used_Entries_Contest_Scores_Current_Event.*, Mouse.Contestant_ID, Contestant.Contestant_Name, Contestant.Class\r\nFROM (Used_Entries_Contest_Scores_Current_Event INNER JOIN Mouse ON Used_Entries_Contest_Scores_Current_Event.Mouse_Name = Mouse.Mouse_Name) INNER JOIN Contestant ON Mouse.Contestant_ID = Contestant.Contestant_ID\r\nORDER BY Used_Entries_Contest_Scores_Current_Event.Competition_ID, Used_Entries_Contest_Scores_Current_Event.Outcome DESC , Used_Entries_Contest_Scores_Current_Event.Score_Time_mS;\r\n"
+  },
+  "Used_Entries_Contest_Scores_Current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Used_Entries_with_contest_for_current_Event.*, Best_Score_Time.Score_Time_mS, Best_Score_Time.Run_Time_mS\r\nFROM Used_Entries_with_contest_for_current_Event LEFT JOIN Best_Score_Time ON Used_Entries_with_contest_for_current_Event.Entry_ID = Best_Score_Time.Entry_ID;\r\n"
+  },
+  "Used_Entries_with_contest_for_current_Event": {
+    "kind": "procedure (action query)",
+    "sql": "SELECT Entry.Entry_ID, Entry.Mouse_Name, Entry.Competition_ID, Entry.Outcome, Competition.Competition_Name, Competition.Challenge, Competition.Competition_Class, Competition.Event_ID\r\nFROM Entry INNER JOIN Competition ON Entry.Competition_ID = Competition.Competition_ID\r\nWHERE (((Competition.Event_ID)=[Forms]![Context_Form]![Event_ID]) AND (Entry.Outcome <> \"Not Run\"));\r\n"
+  }
+}
