@@ -145,10 +145,19 @@ tidiness).
         `.11` below based on what it found; raised `Q-4`/`Q-5`. Confirmed:
         no new Access-only SQL beyond `DB-5.1`, no new serial codes beyond
         `SER-1`, no new Windows-only deps beyond `PLAT-1`.
-  - [ ] **APP-1.1** — Project scaffolding: `pyproject.toml` (src layout),
-        pytest config, dependency list (`pyserial`; sound library TBD).
-        **Success:** `pip install -e .[dev]` and `pytest` both run cleanly
-        from repo root with zero real tests yet.
+  - [x] **APP-1.1** — Project scaffolding: `contest_app/pyproject.toml`
+        (src layout, `[tool.setuptools.packages.find] where = ["src"]`,
+        `[tool.pytest.ini_options] testpaths = ["tests"]`), dependency
+        `pyserial>=3.5`, dev dependency `pytest>=8` (sound library still
+        TBD — deferred to `APP-1.12`, not needed yet). Verified (not
+        assumed) both from `contest_app/` and from the repo root:
+        `pip install -e '.[dev]'` / `pip install -e './contest_app[dev]'`
+        both succeed into a venv, and `pytest` collects cleanly with 0
+        items either way (exit code 5, "no tests ran" — expected, not an
+        error: `check_db5_rewrites.py` is deliberately not
+        pytest-discoverable yet, per its own docstring; real tests start at
+        `APP-1.2`). `contest_app/tests/README.md` updated with the venv
+        setup steps.
   - [ ] **APP-1.2** — Test scaffolding (`TEST-1`'s deliverable): in-memory
         SQLite fixture built from `sample_data/demo.db` (already migrated —
         `contest_app/tests/check_db5_rewrites.py` now points at `demo.db`,
