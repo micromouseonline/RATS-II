@@ -193,20 +193,28 @@ tidiness).
         `AppState` never pulls in `tkinter`/`sqlite3`/`serial` (proves the
         decoupling for real, not by inspection — an in-process check would
         have been contaminated by other test modules' own imports).
-  - [ ] **APP-1.4** — DB access layer: one function per DB operation
-        `Form1.cs` performs (entry/competition selects, `Entry_Run` insert,
-        `Best_Score_Time` insert/update via the `DB-5` rewrites,
-        `Entry.Entry_Used`/`Outcome` update, the rank query, **plus the
-        `Scoring_Model` lookup from `Competition_DataGridview_SelectionChanged`
-        (`touches_enabled`, `touches_cumulative`, `touch_time_ms`,
-        `entry_time_divider`, `touch_time_divider`, `touches_per_run`,
-        `entry_time_limit_s`, `no_of_runs_allowed`, `grace_period_ms`) —
-        found in `APP-1.0`, populates every scoring-formula input `DB-5`
-        depends on**). **Takes an explicit DB file path, not a hardcoded
-        connection string** — per `REPO-3`, replaces
-        `Public_Variables.connString`. **Success:** unit tests against a
-        scratch DB for every function; `DB-5`'s tests folded in here
-        (fulfills `DB-5.6`).
+  - [x] **APP-1.4** — DB access layer: `contest_app/src/rats/db.py`, one
+        function per DB operation `Form1.cs` performs — `get_context`,
+        `select_competitions`, `select_scoring_model` (the
+        `Competition_DataGridview_SelectionChanged` lookup: `touches_enabled`,
+        `touches_cumulative`, `touch_time_ms`, `entry_time_divider`,
+        `touch_time_divider`, `touches_per_run` — `entry_time_limit_s`/
+        `no_of_runs_allowed`/`grace_period_s` come from `select_competitions`'s
+        `Competition` row instead, found in `APP-1.0`), `select_pending_entries`,
+        `select_contestant_for_mouse`, `mark_entry_retired`,
+        `mark_entry_successful`, `insert_entry_run`, `insert_best_score_time`,
+        `update_best_score_time`, plus the `DB-5` rewrites
+        `backfill_contestant_names`/`rank_of`. **Takes an explicit
+        `sqlite3.Connection`, not a hardcoded connection string** — per
+        `REPO-3`, replaces `Public_Variables.connString`; all writes
+        parameterized (the legacy code built several via raw string
+        concatenation — not carried forward). **Success:**
+        `contest_app/tests/test_db.py`, 26 tests, one per function, against
+        real values from `sample_data/demo.db`; `DB-5`'s tests ported in
+        alongside (fulfills `DB-5.6`) — `check_db5_rewrites.py` kept (still
+        referenced from closed `DB-5`/`REPO-4` history, not worth rewriting)
+        but now calls `db.backfill_contestant_names()`/`db.rank_of()`
+        instead of duplicating their SQL; its own 7 tests still pass.
   - [ ] **APP-1.5** — Serial frame parser: pure function, `<code,payload>`
         buffer-scanning (matching legacy's approach) → structured `Message`
         objects for the 21 in-scope codes, including value scaling (`*100`,

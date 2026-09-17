@@ -14,12 +14,20 @@ get wired into the app. unittest.TestCase is used instead of bare asserts
 so pytest can pick this file up unchanged once real test scaffolding
 exists.
 
+As of APP-1.4, the guarded rewrite and the rank query live in
+rats.db.backfill_contestant_names()/rats.db.rank_of() -- this file calls
+those rather than duplicating their SQL (see contest_app/src/rats/db.py
+and contest_app/tests/test_db.py, which cover the same ground as proper
+pytest tests). BACKFILL_NAIVE_SQL stays inline below since it deliberately
+documents the trap the guard avoids -- it's not something rats.db exposes.
+
 Run directly:
     python3 contest_app/tests/check_db5_rewrites.py
 """
 import unittest
 
 from dbfixture import demo_db_connection
+from rats import db
 
 BACKFILL_NAIVE_SQL = """
     UPDATE Best_Score_Time
@@ -37,26 +45,6 @@ BACKFILL_NAIVE_SQL = """
             WHERE Mouse.Mouse_Name = Best_Score_Time.Mouse_Name
         )
     WHERE Contestant_Name = '_'
-"""
-
-BACKFILL_GUARDED_SQL = BACKFILL_NAIVE_SQL + """
-    AND EXISTS (
-        SELECT 1
-        FROM Mouse
-        JOIN Contestant ON Contestant.Contestant_ID = Mouse.Contestant_ID
-        WHERE Mouse.Mouse_Name = Best_Score_Time.Mouse_Name
-    )
-"""
-
-RANK_SQL = """
-    SELECT
-        (SELECT COUNT(*)
-         FROM Best_Score_Time AS t1
-         WHERE t1.Competition_ID = t2.Competition_ID
-           AND t1.Score_Time_mS <= t2.Score_Time_mS) AS Rank
-    FROM Best_Score_Time AS t2
-    WHERE t2.Competition_ID = ?
-      AND t2.Mouse_Name = ?
 """
 
 
@@ -90,7 +78,7 @@ class BackfillRewriteTests(unittest.TestCase):
         self.assertEqual(row, (None, None), "naive rewrite no longer corrupts the row -- re-check this test's premise")
 
     def test_guarded_rewrite_leaves_the_unmatched_dummy_row_alone(self):
-        self.conn.execute(BACKFILL_GUARDED_SQL)
+        db.backfill_contestant_names(self.conn)
         row = self.conn.execute(
             "SELECT Mouse_Name, Contestant_Name, Contestant_Class FROM Best_Score_Time WHERE ID = 781"
         ).fetchone()
@@ -109,7 +97,7 @@ class BackfillRewriteTests(unittest.TestCase):
             "Score_Time_mS, Run_Time_mS, Competition_ID) VALUES (999001, 0, ?, '_', '_', 1000, 1000, 0)",
             (mouse_name,),
         )
-        self.conn.execute(BACKFILL_GUARDED_SQL)
+        db.backfill_contestant_names(self.conn)
         row = self.conn.execute(
             "SELECT Contestant_Name, Contestant_Class FROM Best_Score_Time WHERE ID = 999001"
         ).fetchone()
@@ -135,8 +123,7 @@ class RankRewriteTests(unittest.TestCase):
         self.conn.close()
 
     def rank_of(self, competition_id, mouse_name):
-        row = self.conn.execute(RANK_SQL, (competition_id, mouse_name)).fetchone()
-        return row[0]
+        return db.rank_of(self.conn, competition_id, mouse_name)
 
     def test_matches_independent_python_computation_for_every_competition(self):
         competitions = [
