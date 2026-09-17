@@ -300,28 +300,79 @@ tidiness).
         guard cases and unit coverage for every other method. First true
         integration test of the whole non-GUI pipeline.
   - [ ] **APP-1.8** — Main window: thin Tkinter wiring around `APP-1.7`'s
-        core via `after()`-driven queue draining. **New vs. legacy: the
-        port selector gets a baud-rate choice added alongside the COM port
-        dropdown** (legacy hardcoded `9600` in `connect_BTN_Click`, no UI
-        for it at all — noted during `APP-1.6`, needed since the port
-        moves to 115200 and a user may still have older 9600 hardware).
-        **`Q-4` resolved:
-        "Stand Alone Mode" (degraded offline operation when the DB is
-        unreachable) is a real requirement, not just legacy parity** — needed
-        for practice sessions without a database. Per `REPO-3`, implemented
-        cleanly as **DB file selection**: opens the bundled `sample_data/demo.db`
-        by default, with "File → Open Database…" (or a startup prompt) to
-        point at a real file instead — no DB explicitly opened yet just
-        means "still on the demo database," not a degraded/disabled state
-        the way the legacy app's Stand Alone Mode worked. Remember the
-        last-opened path in a small local git-ignored config file. Also
-        replicate the Tx/Rx log-file behavior (two timestamped log files
-        opened on load) if still wanted — exact legacy filename pattern
-        documented in `plans/app-1-behavior-inventory.md`. **Success:**
-        manual smoke test against real (or looped-back) hardware, both with
-        the demo DB and with a real opened DB; automated coverage limited to
-        "constructs without
-        error."
+        core. Broken into 4 sub-stages (decided with the user — too much
+        UI surface for one shot, and the stage's only real success
+        criterion is a manual smoke test the user has to run, not
+        something worth batching into one big diff to review at once).
+        Not strictly sequential beyond `.1` unblocking the rest (`.2`/`.3`
+        both need `.1`'s connection/queue-draining loop and DB-open;
+        `.4`'s log files ideally land early enough to cover `.2`/`.3`'s
+        manual testing too, but functionally only depend on `.1`). Full
+        layout/widget-inventory plan, and three standing conventions the
+        user set for this stage and `APP-1.9`–`.12`: `.1` builds
+        placeholders for the **entire** main-window layout up front (not
+        grown sub-stage by sub-stage, so the user can react to/request
+        changes to the whole layout early — inert widgets get activated
+        by later sub-stages, not added fresh); **responsive layout from
+        that first placeholder pass**, not retrofitted later (weighted
+        `grid`/`pack`, no fixed-pixel widgets, matching `Q-5`/`UI-1`'s
+        resizable-not-fixed-pixel standard already set for the display
+        windows); and **every manual-smoke-test stage from here on ships
+        a numbered test checklist with expected results** for the user to
+        run against their own hardware (confirmed available). Full writeup:
+        `plans/app-1-8-main-window-layout.md`.
+    - [ ] **APP-1.8.1** — Window shell + connection: COM port dropdown
+          (`pyserial.tools.list_ports`), **baud-rate choice added
+          alongside it** (legacy hardcoded `9600` in `connect_BTN_Click`,
+          no UI for it at all — noted during `APP-1.6`, needed since the
+          port moves to 115200 and a user may still have older 9600
+          hardware), Connect/Disconnect wired to
+          `configure_serial_port`/`SerialReader` (`APP-1.6`). **`Q-4`
+          resolved: "Stand Alone Mode" (degraded offline operation when
+          the DB is unreachable) is a real requirement**, needed for
+          practice sessions without a database — implemented per `REPO-3`
+          as **DB file selection**, not a degraded mode: opens
+          `sample_data/demo.db` by default, "File → Open Database…" for a
+          real file, remembering the last-opened path in a small local
+          git-ignored config file. Also starts the `after()`-driven queue-
+          draining loop on connect (nothing visible reacts to it yet --
+          `.2`/`.3` add that). **Success:** manual smoke test against real
+          (or looped-back) hardware for the actual connect; automated
+          coverage for the config-file read/write and port/baud
+          enumeration glue; "constructs without error" for the rest.
+    - [ ] **APP-1.8.2** — Event/competition/entry selection: competition-
+          class dropdown + competition grid (`db.select_competitions`),
+          entry/mouse grid (`db.select_pending_entries`), wired to
+          `core.select_competition()`/`core.select_entry()`. **Success:**
+          manual smoke test against `sample_data/demo.db`'s real
+          event/competition/entry data.
+    - [ ] **APP-1.8.3** — Run-control buttons + live display:
+          `Touch`/`DNF`/`Clear`/`New Mouse`/`Practice Mode`/
+          `Extra Run`/`WatchDog` wired to their `AppCore` methods, plus
+          the live run/score/rank/time-left display updating off the
+          drained queue. **Also where `APP-1.7`'s deliberately-deferred
+          local time interpolation gets wired up** (`Timer1_Tick`'s
+          `split_time_ms`/`maze_time_ms` ticking between real gate
+          messages) — it needs an actual periodic timer, which only
+          exists once this stage's `after()` loop is running. **Success:**
+          manual smoke test against real hardware exercising a full run,
+          including touches and a DNF.
+    - [ ] **APP-1.8.4** — Monitor + log files + child-window launch
+          buttons: the raw Tx/Rx `RichTextBox` monitor (`Monitor`/
+          `Verbose` toggle buttons), **the two timestamped log files**
+          (user confirmed: replicate this — every line, per `Q-6`, not
+          just successfully-parsed ones — but relocated to sit next to
+          the open DB file or a project-local `logs/` dir instead of a
+          hardcoded `Desktop` path, which isn't meaningful cross-platform;
+          exact legacy filename pattern in
+          `plans/app-1-behavior-inventory.md`), and the four launch
+          buttons for the calibration/run-order/display/results windows
+          (`APP-1.9`–`.12` build the windows themselves; these just toggle
+          the existing open/close-request flags in `AppState.windows`).
+          **Success:** manual check that every line arriving on the queue
+          shows up in the log file, parsed or not; "constructs without
+          error" for the launch buttons (their target windows don't exist
+          until `.9`–`.12`).
   - [ ] **APP-1.9** — Calibration form. `APP-1.0` confirmed this is simple —
         a static 3×3 grid driven entirely by state fields `APP-1.7` already
         populates from protocol codes `71`–`73`/`81`–`86`, no calculation of
