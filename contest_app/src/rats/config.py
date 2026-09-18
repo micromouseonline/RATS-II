@@ -41,6 +41,12 @@ class AppConfig:
     last_db_path: Optional[str] = None
     last_port: Optional[str] = None
     last_baud: int = DEFAULT_BAUD
+    # Saved on every close, but not yet read back on startup --
+    # `main_window.RESTORE_WINDOW_SIZE` gates that half of the feature off
+    # for now (see its docstring). Kept here so the data is already being
+    # collected once that's switched on.
+    last_window_width: Optional[int] = None
+    last_window_height: Optional[int] = None
 
 
 def load_config(path: Optional[Path] = None) -> AppConfig:
@@ -60,6 +66,8 @@ def load_config(path: Optional[Path] = None) -> AppConfig:
         last_db_path=data.get("last_db_path", defaults.last_db_path),
         last_port=data.get("last_port", defaults.last_port),
         last_baud=data.get("last_baud", defaults.last_baud),
+        last_window_width=data.get("last_window_width", defaults.last_window_width),
+        last_window_height=data.get("last_window_height", defaults.last_window_height),
     )
 
 

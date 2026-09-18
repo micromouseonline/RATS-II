@@ -6,7 +6,15 @@ is a manual smoke test (see plans/app-1-8-main-window-layout.md and the
 checklist shipped with this stage) -- not exercised here.
 """
 from rats import main_window
-from rats.main_window import BAUD_RATES, DEFAULT_BAUD, MainWindow, list_available_ports
+from rats.config import AppConfig
+from rats.main_window import (
+    BAUD_RATES,
+    DEFAULT_BAUD,
+    DEFAULT_WINDOW_SIZE,
+    RESTORE_WINDOW_SIZE,
+    MainWindow,
+    list_available_ports,
+)
 
 from gui_helpers import skip_if_no_display
 
@@ -60,3 +68,76 @@ def test_main_window_placeholder_widgets_start_disabled(demo_db):
         assert "disabled" in window.competition_tree.state()
     finally:
         window.destroy()
+
+
+def test_default_window_size_matches_legacy_client_size(demo_db):
+    """Legacy Form1's designed ClientSize, `Form1.cs:2092`."""
+    skip_if_no_display()
+    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    try:
+        window.update_idletasks()
+        assert (window.winfo_width(), window.winfo_height()) == DEFAULT_WINDOW_SIZE
+    finally:
+        window.destroy()
+
+
+def test_panes_start_at_equal_thirds(demo_db):
+    skip_if_no_display()
+    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    try:
+        window.update_idletasks()
+        total_width = window._paned.winfo_width()
+        third = total_width // 3
+
+        assert window._paned.sashpos(0) == third
+        assert window._paned.sashpos(1) == 2 * third
+    finally:
+        window.destroy()
+
+
+def test_title_shows_current_window_size(demo_db):
+    skip_if_no_display()
+    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    try:
+        window.update_idletasks()
+        width, height = DEFAULT_WINDOW_SIZE
+        assert f"{width}x{height}" in window.title()
+    finally:
+        window.destroy()
+
+
+def test_restoring_saved_window_size_is_currently_disabled(demo_db, monkeypatch):
+    """RESTORE_WINDOW_SIZE gates reading the saved size back on startup --
+    the size is still saved (see the next test), just not applied yet."""
+    skip_if_no_display()
+    assert RESTORE_WINDOW_SIZE is False
+
+    monkeypatch.setattr(
+        main_window.config_module,
+        "load_config",
+        lambda: AppConfig(last_window_width=1234, last_window_height=999),
+    )
+
+    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    try:
+        window.update_idletasks()
+        assert (window.winfo_width(), window.winfo_height()) == DEFAULT_WINDOW_SIZE
+    finally:
+        window.destroy()
+
+
+def test_window_size_is_saved_on_close(demo_db, monkeypatch):
+    skip_if_no_display()
+    saved = {}
+    monkeypatch.setattr(
+        main_window.config_module,
+        "save_config",
+        lambda cfg: saved.update(width=cfg.last_window_width, height=cfg.last_window_height),
+    )
+
+    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    window.update_idletasks()
+    window.destroy()
+
+    width, height = DEFAULT_WINDOW_SIZE
+    assert saved == {"width": width, "height": height}

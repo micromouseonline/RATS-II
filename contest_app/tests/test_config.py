@@ -21,7 +21,13 @@ def test_load_non_object_json_returns_defaults(tmp_path):
 
 def test_save_then_load_round_trips(tmp_path):
     path = tmp_path / "nested" / "config.json"
-    cfg = AppConfig(last_db_path="/some/event.db", last_port="COM3", last_baud=115200)
+    cfg = AppConfig(
+        last_db_path="/some/event.db",
+        last_port="COM3",
+        last_baud=115200,
+        last_window_width=884,
+        last_window_height=522,
+    )
 
     save_config(cfg, path)
     loaded = load_config(path)
@@ -44,3 +50,5 @@ def test_load_partial_file_fills_in_defaults(tmp_path):
     assert cfg.last_port == "COM5"
     assert cfg.last_db_path is None
     assert cfg.last_baud == 9600
+    assert cfg.last_window_width is None
+    assert cfg.last_window_height is None

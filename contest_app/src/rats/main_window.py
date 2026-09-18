@@ -36,6 +36,18 @@ DEFAULT_DB_PATH = REPO_ROOT / "sample_data" / "demo.db"
 BAUD_RATES = [9600, 19200, 38400, 57600, 115200]
 DEFAULT_BAUD = config_module.DEFAULT_BAUD
 
+WINDOW_TITLE = "RATS Contest Timing"
+# Legacy Form1's designed size (`Form1.cs:2092`, `ClientSize = new Size(884, 522)`).
+DEFAULT_WINDOW_SIZE = (884, 522)
+
+# The window size is already saved to the config file on every close
+# (`MainWindow.destroy`) so the data is being collected, but reopening at
+# that saved size is switched off for now -- flip this once the `.2`-`.4`
+# layout has stabilized enough that a remembered size stays meaningful
+# rather than clipping a layout that's since grown. Leave the read-back
+# code below in place; just this flag needs to change.
+RESTORE_WINDOW_SIZE = False
+
 # How often the after()-loop drains the reader thread's queue, and the most
 # items it will process in one tick (bounds how long a single Tk callback
 # can run if a burst of messages arrives at once).
@@ -76,7 +88,8 @@ class MainWindow(tk.Tk):
         open_serial_port_fn: Callable[[str, int], Transport] = open_serial_port,
     ):
         super().__init__()
-        self.title("RATS Contest Timing")
+        self.title(WINDOW_TITLE)
+        self.bind("<Configure>", self._on_root_configure)
 
         self._open_serial_port_fn = open_serial_port_fn
         self._cfg = config_module.load_config()
@@ -97,6 +110,30 @@ class MainWindow(tk.Tk):
         self._build_menu()
         self._build_layout()
         self._refresh_ports()
+        self._apply_startup_geometry()
+
+    # -- Window geometry ----------------------------------------------------
+
+    def _apply_startup_geometry(self) -> None:
+        width, height = DEFAULT_WINDOW_SIZE
+        if RESTORE_WINDOW_SIZE and self._cfg.last_window_width and self._cfg.last_window_height:
+            width, height = self._cfg.last_window_width, self._cfg.last_window_height
+        self.geometry(f"{width}x{height}")
+
+        # Split the three panes into equal thirds up front -- PanedWindow's
+        # `weight` only governs how *extra* space is redistributed on a
+        # later resize, not each pane's initial width, so the sashes need
+        # setting explicitly once the window's actual width is known.
+        self.update_idletasks()
+        total_width = self._paned.winfo_width() or width
+        third = total_width // 3
+        self._paned.sashpos(0, third)
+        self._paned.sashpos(1, 2 * third)
+
+    def _on_root_configure(self, event: "tk.Event") -> None:
+        if event.widget is not self:
+            return
+        self.title(f"{WINDOW_TITLE} ({self.winfo_width()}x{self.winfo_height()})")
 
     # -- Startup DB resolution ---------------------------------------------
 
@@ -131,6 +168,7 @@ class MainWindow(tk.Tk):
 
         paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         paned.grid(row=1, column=0, sticky="nsew")
+        self._paned = paned
 
         self._build_entry_pane(paned)
         self._build_run_pane(paned)
@@ -226,18 +264,22 @@ class MainWindow(tk.Tk):
         """Pane 2: run control buttons + live display (`APP-1.8.3`, inert
         here)."""
         frame = ttk.Frame(paned, padding=4)
-        paned.add(frame, weight=2)
+        paned.add(frame, weight=1)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
 
         button_row = ttk.Frame(frame)
         button_row.grid(row=0, column=0, sticky="ew")
+        # Captions match the legacy app's actual on-screen text
+        # (legacy/legacy-rats-screen.png), not the C# handler names --
+        # attribute names below stay tied to those handler names for
+        # cross-reference with behavior_inventory.md.
         button_specs = [
-            ("Touch", "touch_button"),
+            ("Add Touch", "touch_button"),
             ("DNF", "dnf_button"),
-            ("Clear", "clear_button"),
-            ("New Mouse", "new_mouse_button"),
-            ("Practice Mode", "practice_mode_button"),
+            ("Clear Display", "clear_button"),
+            ("New Robot", "new_mouse_button"),
+            ("Practice <=> Contest", "practice_mode_button"),
             ("Extra Run", "extra_run_button"),
             ("WatchDog", "watchdog_button"),
         ]
@@ -299,7 +341,7 @@ class MainWindow(tk.Tk):
         """Pane 3: raw Tx/Rx monitor, log toggles, child-window launch
         buttons (`APP-1.8.4`/`.9`-`.12`, inert here)."""
         frame = ttk.Frame(paned, padding=4)
-        paned.add(frame, weight=2)
+        paned.add(frame, weight=1)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
 
@@ -317,12 +359,17 @@ class MainWindow(tk.Tk):
 
         launch_frame = ttk.LabelFrame(frame, text="Windows", padding=4)
         launch_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        # The 3 single-channel display variants are captioned by resolution
+        # in the legacy app (legacy/legacy-rats-screen.png), not "v2"/"wide"
+        # as the C# class names (single_ch_display_v2/_16_9) suggest --
+        # 612x595 is the original single_channel_display, 1280x720 the
+        # 16:9 variant (UI-1's parametrized class covers all 3, APP-1.11).
         launch_specs = [
             ("Calibrate", "calibrate_button"),
             ("Run Order", "run_order_button"),
-            ("Display (1ch)", "display_1ch_button"),
-            ("Display (1ch v2)", "display_1ch_v2_button"),
-            ("Display (1ch wide)", "display_1ch_wide_button"),
+            ("612 x 595", "display_1ch_button"),
+            ("800 x 600", "display_1ch_v2_button"),
+            ("1280 x 720", "display_1ch_wide_button"),
             ("Results (1ch)", "results_1ch_button"),
             ("Name Contestants", "name_contestants_button"),
         ]
@@ -448,6 +495,11 @@ class MainWindow(tk.Tk):
     def destroy(self) -> None:
         if self._reader is not None:
             self._disconnect()
+        # Saved unconditionally -- only reading it back on startup is
+        # gated by RESTORE_WINDOW_SIZE, so the data is ready once that's on.
+        self._cfg.last_window_width = self.winfo_width()
+        self._cfg.last_window_height = self.winfo_height()
+        config_module.save_config(self._cfg)
         super().destroy()
 
 

@@ -363,6 +363,27 @@ tidiness).
           public `tkinter.filedialog` API exposes a fix for; doesn't occur
           on Windows/Mac, which use the native OS picker) — left as-is,
           not worth a custom dialog for this.
+          **Follow-up polish, same stage:** user supplied
+          `legacy/legacy-rats-screen.png` (a live screenshot of the real
+          legacy app), confirming/correcting several `APP-1.8` guesses —
+          button captions now match the actual on-screen text rather than
+          the C# handler names (`Add Touch`, `Clear Display`, `New Robot`,
+          `Practice <=> Contest`), and the 3 single-channel display buttons
+          are captioned by resolution (`612 x 595`/`800 x 600`/`1280 x 720`)
+          rather than `v2`/`wide`, per `APP-1.11`. Also: startup window size
+          now matches legacy `Form1`'s designed `ClientSize` exactly
+          (`884x522`, `Form1.cs:2092`); the title bar shows the live window
+          size, updating on resize; `AppConfig` gained
+          `last_window_width`/`last_window_height`, saved on every close —
+          but reading them back on startup is gated off for now behind
+          `main_window.RESTORE_WINDOW_SIZE = False` (user: "temporarily
+          disable that feature but leave it in the code") until the
+          `.2`–`.4` layout has stabilized enough that a remembered size
+          stays meaningful. The 3 panes also now start at exactly equal
+          thirds of the window width (explicit `sashpos()` calls once the
+          window's real width is known — `PanedWindow`'s `weight` alone
+          only governs redistribution on a later resize, not the initial
+          split).
     - [ ] **APP-1.8.2** — Event/competition/entry selection: competition-
           class dropdown + competition grid (`db.select_competitions`),
           entry/mouse grid (`db.select_pending_entries`), wired to
