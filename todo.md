@@ -102,6 +102,29 @@ tidiness).
       timer display + one results display, on two separate monitors for
       audience view). User confirmed this matches recollection of real
       event usage.
+- [x] **UI-2** — **Decided: `sv_ttk`'s light theme, applied globally** to
+      `contest_app`'s Tkinter UI (`rats/main_window.py`,
+      `sv_ttk.set_theme("light")` right after the root window is created).
+      Raised as a discussion during `APP-1.8.3`'s wrap-up (`.1`-`.3`'s
+      stock `ttk` look was called "ugly") — PySide6 was considered and set
+      aside as too large a swap this far into the Tkinter build (would
+      mean redoing `.1`-`.3`, plus a much heavier dependency); `sv_ttk` was
+      tried instead as a near-zero-cost middle ground — a single ~50KB
+      pure-Tcl/Tk theme file (MIT), no C extensions, no widget-code changes
+      at all, just the one `set_theme()` call. Both `sv_ttk` variants were
+      run live against the actual main window (not screenshots — the user
+      asked to see them on their own screen) and compared; both were "an
+      improvement" over stock `ttk`, light chosen "for now" (dark stays a
+      trivial one-line swap later if wanted — `THEME` is a single module
+      constant). Added as a real dependency (`pyproject.toml`).
+      **Known cost, not yet fixed:** `sv_ttk`'s buttons take more
+      horizontal padding than stock `ttk`'s — several run-control captions
+      now clip in their current pane width (`"Clear Display"` → `"Cle"`,
+      `"Practice <=> Contest"` → `"Practice <"`, `"WatchDog"` → `"Watcl"`,
+      `"800 x 600"` → `"80"`, `"Results (1ch)"` → `"Result"`). Left for
+      `APP-1.8.5`'s layout-review checkpoint rather than fixed reactively
+      here, since that stage already exists to reconcile the whole
+      assembled layout against `legacy/legacy-rats-screen.png` in one pass.
 - [x] **PLAT-1** — **Decided: fonts bundled as `.ttf` and registered
       per-process via `ctypes`** (per-OS APIs — `AddFontResourceEx` on
       Windows, `CTFontManagerRegisterFontsForURL` on macOS,

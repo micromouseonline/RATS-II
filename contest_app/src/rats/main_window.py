@@ -28,12 +28,20 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Optional
 
 import serial.tools.list_ports
+import sv_ttk
 
 from rats import config as config_module
 from rats import db
 from rats.core import AppCore
 from rats.serial_transport import SerialReader, Transport, open_serial_port
 from rats.state import AppState
+
+# UI-2: sv_ttk's light theme, chosen over stock ttk after the user compared
+# both sv_ttk variants live against this window -- "an improvement", light
+# preferred "for now". A known cost, not yet fixed: sv_ttk's wider button
+# padding clips several run-control captions in their current pane width
+# ("Clear Display" -> "Cle", etc.) -- left for APP-1.8.5's layout pass.
+THEME = "light"
 
 # Timer1_Tick's timing_gates_state -> State_Text_Label mapping (Form1.cs:3163),
 # combined with Timer_State_lbl's raw number into one display string rather
@@ -112,6 +120,7 @@ class MainWindow(tk.Tk):
         open_serial_port_fn: Callable[[str, int], Transport] = open_serial_port,
     ):
         super().__init__()
+        sv_ttk.set_theme(THEME)
         self.title(WINDOW_TITLE)
         self.bind("<Configure>", self._on_root_configure)
 
