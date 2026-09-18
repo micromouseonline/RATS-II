@@ -300,10 +300,12 @@ tidiness).
         guard cases and unit coverage for every other method. First true
         integration test of the whole non-GUI pipeline.
   - [ ] **APP-1.8** — Main window: thin Tkinter wiring around `APP-1.7`'s
-        core. Broken into 4 sub-stages (decided with the user — too much
+        core. Broken into 5 sub-stages (decided with the user — too much
         UI surface for one shot, and the stage's only real success
         criterion is a manual smoke test the user has to run, not
-        something worth batching into one big diff to review at once).
+        something worth batching into one big diff to review at once;
+        `.5` added after `.1`–`.4` were planned, once a real screenshot of
+        the legacy app's layout was available to react to).
         Not strictly sequential beyond `.1` unblocking the rest (`.2`/`.3`
         both need `.1`'s connection/queue-draining loop and DB-open;
         `.4`'s log files ideally land early enough to cover `.2`/`.3`'s
@@ -437,6 +439,17 @@ tidiness).
           shows up in the log file, parsed or not; "constructs without
           error" for the launch buttons (their target windows don't exist
           until `.9`–`.12`).
+    - [ ] **APP-1.8.5** — Layout review checkpoint: with the full main
+          window now built and every region live (`.1`–`.4`), user reviews
+          it against `legacy/legacy-rats-screen.png` and requests whatever
+          layout changes bring it closer to the legacy app (spacing,
+          grouping, sizing, anything else that reads oddly next to the
+          reference screenshot) before moving on to the child windows
+          (`APP-1.9`–`.12`). Not a fixed checklist like `.1`–`.4` — driven
+          by whatever the user actually flags. Placed here rather than
+          after each sub-stage individually since the point is reacting to
+          the *whole* assembled layout at once, same rationale as `.1`
+          building every region's placeholders up front.
   - [ ] **APP-1.9** — Calibration form. `APP-1.0` confirmed this is simple —
         a static 3×3 grid driven entirely by state fields `APP-1.7` already
         populates from protocol codes `71`–`73`/`81`–`86`, no calculation of
