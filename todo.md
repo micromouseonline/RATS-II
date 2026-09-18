@@ -321,25 +321,48 @@ tidiness).
         a numbered test checklist with expected results** for the user to
         run against their own hardware (confirmed available). Full writeup:
         `plans/app-1-8-main-window-layout.md`.
-    - [ ] **APP-1.8.1** — Window shell + connection: COM port dropdown
-          (`pyserial.tools.list_ports`), **baud-rate choice added
-          alongside it** (legacy hardcoded `9600` in `connect_BTN_Click`,
-          no UI for it at all — noted during `APP-1.6`, needed since the
-          port moves to 115200 and a user may still have older 9600
-          hardware), Connect/Disconnect wired to
-          `configure_serial_port`/`SerialReader` (`APP-1.6`). **`Q-4`
-          resolved: "Stand Alone Mode" (degraded offline operation when
-          the DB is unreachable) is a real requirement**, needed for
-          practice sessions without a database — implemented per `REPO-3`
-          as **DB file selection**, not a degraded mode: opens
-          `sample_data/demo.db` by default, "File → Open Database…" for a
-          real file, remembering the last-opened path in a small local
-          git-ignored config file. Also starts the `after()`-driven queue-
-          draining loop on connect (nothing visible reacts to it yet --
-          `.2`/`.3` add that). **Success:** manual smoke test against real
-          (or looped-back) hardware for the actual connect; automated
-          coverage for the config-file read/write and port/baud
-          enumeration glue; "constructs without error" for the rest.
+    - [x] **APP-1.8.1** — Window shell + connection:
+          `contest_app/src/rats/main_window.py`'s `MainWindow`, the first
+          real Tkinter window. Built the **entire** `APP-1.8` layout up
+          front per the standing convention — a connection toolbar over a
+          resizable `ttk.PanedWindow` with 3 panes (event/entry selection,
+          run control + live display, monitor/logs/launch buttons) —
+          weighted `grid`/`pack` throughout, no fixed-pixel widgets;
+          everything outside the toolbar is disabled placeholder, activated
+          by `.2`–`.4`. Connection toolbar: COM port dropdown
+          (`pyserial.tools.list_ports`, wrapped as `list_available_ports()`
+          for testability) plus the **new baud-rate dropdown**
+          (`{9600, 19200, 38400, 57600, 115200}`, defaulting to `9600` —
+          legacy hardcoded `9600` with no UI at all; 115200 available once
+          hardware is confirmed reflashed, user decision this stage), both
+          wired to `configure_serial_port`/`SerialReader`/`open_serial_port`
+          (`APP-1.6`). Connect starts the `after()`-driven queue-drain loop
+          into `AppCore.drain_queue()` (nothing downstream reacts to
+          drained items yet — `.2`/`.3` add that) and auto-resets the UI if
+          a `Disconnected` item surfaces mid-session. **`Q-4` resolved:**
+          "Stand Alone Mode" replaced entirely by **DB file selection**
+          (`REPO-3`) — opens `sample_data/demo.db` by default (falling back
+          to it if the remembered path is missing/corrupt), "File → Open
+          Database…" for a real file (a bad file shows an error dialog and
+          keeps the previous DB open), remembering the last-opened path.
+          **New module `rats/config.py`**: a small JSON config file holding
+          `last_db_path`/`last_port`/`last_baud`, in a **per-user config
+          directory** (`~/.config/rats-contest-app/`, `%APPDATA%` on
+          Windows) rather than project-local — user decision this stage,
+          so it survives moving/reinstalling the checkout; missing/corrupt
+          file falls back to defaults, never raises.
+          **Success:** `contest_app/tests/test_config.py`/
+          `test_main_window.py` (new `gui_helpers.py` skip-if-no-display
+          convention — first GUI tests in this suite) cover the config
+          round-trip/fallback, port/baud enumeration glue, and
+          "constructs without error"; **user ran the full 9-step manual
+          checklist against real hardware — all passed.** One cosmetic note
+          from that pass: Tk's stock Linux file-open dialog resizes itself
+          when changing directories (a known quirk of Tk's own
+          non-native-on-Linux dialog implementation, not something the
+          public `tkinter.filedialog` API exposes a fix for; doesn't occur
+          on Windows/Mac, which use the native OS picker) — left as-is,
+          not worth a custom dialog for this.
     - [ ] **APP-1.8.2** — Event/competition/entry selection: competition-
           class dropdown + competition grid (`db.select_competitions`),
           entry/mouse grid (`db.select_pending_entries`), wired to
