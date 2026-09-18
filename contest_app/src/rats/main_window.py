@@ -1,4 +1,4 @@
-"""Main window (`APP-1.8.1`/`.2`): thin Tkinter wiring around `AppCore`
+"""Main window (`APP-1.8.1`-`.3`): thin Tkinter wiring around `AppCore`
 (`APP-1.7`).
 
 Builds the *entire* main-window layout up front, per the standing
@@ -6,8 +6,10 @@ convention set for `APP-1.8`-`.12` (`plans/app-1-8-main-window-layout.md`):
 every region this stage through `APP-1.8.4` needs is laid out now, with
 anything not yet wired shown disabled/placeholder rather than absent.
 `.1` activated the connection toolbar (COM port/baud, Connect/Disconnect)
-and DB file selection; `.2` activates the event/competition/entry
-selection pane -- `.3`/`.4` activate the rest.
+and DB file selection; `.2` activated the event/competition/entry
+selection pane; `.3` activates the run-control buttons and live display,
+plus the periodic local-time interpolation (`AppCore.tick()`) -- `.4`
+activates the rest.
 
 Layout uses a horizontal `ttk.PanedWindow` under a connection toolbar so
 the three main regions resize independently, with weighted `grid`/`pack`
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import queue
 import sqlite3
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -31,6 +34,19 @@ from rats import db
 from rats.core import AppCore
 from rats.serial_transport import SerialReader, Transport, open_serial_port
 from rats.state import AppState
+
+# Timer1_Tick's timing_gates_state -> State_Text_Label mapping (Form1.cs:3163),
+# combined with Timer_State_lbl's raw number into one display string rather
+# than two separate near-duplicate labels (matching the "not translating
+# GroupBoxes 1:1" approach already taken elsewhere in this layout).
+_TIMER_STATE_TEXT = {
+    0: "Gates calibrating",
+    1: "Waiting start present",
+    2: "Robot in start cell",
+    3: "Run started",
+    4: "Run in progress",
+    5: "Run complete",
+}
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DEFAULT_DB_PATH = REPO_ROOT / "sample_data" / "demo.db"
@@ -114,6 +130,7 @@ class MainWindow(tk.Tk):
         self._reader: Optional[SerialReader] = None
         self._queue: Optional["queue.Queue"] = None
         self._drain_after_id: Optional[str] = None
+        self._last_tick_time: Optional[float] = None
 
         self._competitions_by_id: dict = {}
         self._entries_by_id: dict = {}
@@ -123,6 +140,14 @@ class MainWindow(tk.Tk):
         self._refresh_ports()
         self._apply_startup_geometry()
         self._load_event_context()
+
+        # practice_mode defaults True (AppState's Public_Variables parity),
+        # so the entry pane starts disabled until Practice Mode is toggled
+        # off -- matches legacy (Competition_Class_ComboBox_SelectedIndexChanged
+        # etc. all no-op while practice_mode is on).
+        self._set_entry_pane_enabled(not self.app_state.entry.practice_mode)
+        self._refresh_watchdog_button_text()
+        self._refresh_live_display()
 
     # -- Window geometry ----------------------------------------------------
 
@@ -224,12 +249,11 @@ class MainWindow(tk.Tk):
         """Pane 1: event/competition/entry selection (`APP-1.8.2`).
 
         Practice-mode gating (`core.select_competition`'s docstring: "the
-        competition grid is disabled during practice mode") is deferred to
-        `APP-1.8.3`, which is what actually wires the Practice Mode toggle
-        and its state transitions -- this pane works regardless of
-        `practice_mode` for now, matching `.2`'s own success criterion (a
-        manual smoke test against `sample_data/demo.db`, no toggle needed
-        to reach it)."""
+        competition grid is disabled during practice mode") is wired in
+        `APP-1.8.3` (`_set_entry_pane_enabled`, called from the Practice
+        Mode toggle and once at startup) rather than here -- `practice_mode`
+        defaults `true`, so this pane actually starts disabled until the
+        user leaves practice mode, matching legacy."""
         frame = ttk.Frame(paned, padding=4)
         paned.add(frame, weight=1)
         frame.columnconfigure(0, weight=1)
@@ -286,8 +310,7 @@ class MainWindow(tk.Tk):
         )
 
     def _build_run_pane(self, paned: ttk.PanedWindow) -> None:
-        """Pane 2: run control buttons + live display (`APP-1.8.3`, inert
-        here)."""
+        """Pane 2: run control buttons + live display (`APP-1.8.3`)."""
         frame = ttk.Frame(paned, padding=4)
         paned.add(frame, weight=1)
         frame.columnconfigure(0, weight=1)
@@ -300,17 +323,17 @@ class MainWindow(tk.Tk):
         # attribute names below stay tied to those handler names for
         # cross-reference with behavior_inventory.md.
         button_specs = [
-            ("Add Touch", "touch_button"),
-            ("DNF", "dnf_button"),
-            ("Clear Display", "clear_button"),
-            ("New Robot", "new_mouse_button"),
-            ("Practice <=> Contest", "practice_mode_button"),
-            ("Extra Run", "extra_run_button"),
-            ("WatchDog", "watchdog_button"),
+            ("Add Touch", "touch_button", self._on_touch_clicked),
+            ("DNF", "dnf_button", self._on_dnf_clicked),
+            ("Clear Display", "clear_button", self._on_clear_clicked),
+            ("New Robot", "new_mouse_button", self._on_new_mouse_clicked),
+            ("Practice <=> Contest", "practice_mode_button", self._on_practice_mode_clicked),
+            ("Extra Run", "extra_run_button", self._on_extra_run_clicked),
+            ("WatchDog", "watchdog_button", self._on_watchdog_clicked),
         ]
-        for col, (label, attr) in enumerate(button_specs):
+        for col, (label, attr, handler) in enumerate(button_specs):
             button_row.columnconfigure(col, weight=1)
-            btn = ttk.Button(button_row, text=label, state="disabled")
+            btn = ttk.Button(button_row, text=label, command=handler)
             btn.grid(row=0, column=col, sticky="ew", padx=2, pady=2)
             setattr(self, attr, btn)
 
@@ -474,8 +497,17 @@ class MainWindow(tk.Tk):
         self.core.select_competition(competition)
         self.selected_competition_var.set(f"Selected: {competition.competition_name}")
         self._clear_entry_selection()
+        self._populate_entry_tree(competition.competition_id)
+        self._refresh_live_display()
 
-        for entry in db.select_pending_entries(self.conn, competition.competition_id):
+    def _populate_entry_tree(self, competition_id: int) -> None:
+        """(Re)fills the entry tree from `db.select_pending_entries` --
+        shared by competition selection and anything that can change which
+        entries are pending mid-selection (`DNF`/`New Mouse`, `.3`)."""
+        for item in self.entry_tree.get_children():
+            self.entry_tree.delete(item)
+        self._entries_by_id.clear()
+        for entry in db.select_pending_entries(self.conn, competition_id):
             iid = str(entry.entry_id)
             self._entries_by_id[iid] = entry
             self.entry_tree.insert("", "end", iid=iid, values=(entry.mouse_name,))
@@ -494,8 +526,113 @@ class MainWindow(tk.Tk):
             return
 
         self.core.select_entry(entry.entry_id, entry.mouse_name)
-        self.selected_robot_var.set(f"Robot: {self.app_state.entry.robot}")
-        self.current_contestant_var.set(f"Contestant: {self.app_state.entry.contestant}")
+        self._update_robot_contestant_labels()
+        self._refresh_live_display()
+
+    def _update_robot_contestant_labels(self) -> None:
+        robot = self.app_state.entry.robot or "--"
+        contestant = self.app_state.entry.contestant or "--"
+        self.selected_robot_var.set(f"Robot: {robot}")
+        self.current_contestant_var.set(f"Contestant: {contestant}")
+
+    def _set_entry_pane_enabled(self, enabled: bool) -> None:
+        """Practice-mode gating (`core.select_competition`'s docstring:
+        "the competition grid is disabled during practice mode") -- called
+        from the Practice Mode toggle and once at startup, since
+        `practice_mode` defaults `true`."""
+        self.competition_class_combo.configure(state="readonly" if enabled else "disabled")
+        tree_state = ("!disabled",) if enabled else ("disabled",)
+        self.competition_tree.state(tree_state)
+        self.entry_tree.state(tree_state)
+
+    # -- Run control + live display (`APP-1.8.3`) ---------------------------
+
+    def _refresh_live_display(self) -> None:
+        """Pushes `AppState` into the live-value/scoring-readout labels.
+        Called after every state-mutating button click (so this pane works
+        without a connection, like `.2`'s entry pane) and every
+        `after()`-loop tick while connected (`_drain_tick`), for the
+        continuously-interpolated fields (`AppCore.tick()`)."""
+        run = self.app_state.run
+        watchdog = self.app_state.watchdog
+        scoring = self.app_state.scoring
+
+        self.split_time_var.set(f"{run.split_time_ms / 1000:.2f}")
+        self.maze_time_var.set(f"{run.maze_time_ms / 1000:.2f}")
+        self.run_time_var.set(f"{run.run_time_ms / 1000:.3f}")
+        self.score_time_var.set(f"{run.score_time_ms / 1000:.3f}")
+        self.best_score_var.set(
+            f"{run.fastest_score_time_this_robot / 1000:.3f}"
+            if run.fastest_score_time_this_robot > 0
+            else "0"
+        )
+        self.rank_var.set(str(run.robot_rank))
+        self.time_left_var.set(f"{run.time_left_ms / 1000:.2f}")
+        self.run_number_var.set(str(run.no_of_runs_used))
+        self.allowed_runs_var.set(str(run.no_of_runs_allowed))
+        self.touches_var.set(str(run.no_of_touches))
+        self.watchdog_state_var.set("Error" if watchdog.watchdog_alarm else "")
+        state_text = _TIMER_STATE_TEXT.get(run.timing_gates_state, "Undefined state")
+        self.timer_state_var.set(f"{run.timing_gates_state} - {state_text}")
+
+        self.touch_time_cfg_var.set(str(scoring.touch_time_ms))
+        self.touch_divider_cfg_var.set(str(scoring.touch_time_divider))
+        self.maze_divider_cfg_var.set(str(scoring.entry_time_divider))
+        self.touch_cumulative_cfg_var.set("yes" if scoring.touches_cumulative else "no")
+        self.touch_enabled_cfg_var.set("yes" if scoring.touches_enabled else "no")
+
+    def _refresh_watchdog_button_text(self) -> None:
+        active = self.app_state.watchdog.watchdog_active
+        self.watchdog_button.configure(text="WatchDog is On" if active else "WatchDog is Off")
+
+    def _on_touch_clicked(self) -> None:
+        self.core.touch()
+        self._refresh_live_display()
+
+    def _on_clear_clicked(self) -> None:
+        self.core.clear()
+        self._refresh_live_display()
+
+    def _on_dnf_clicked(self) -> None:
+        """`DNF_Button_Click`, `Form1.cs:2553`."""
+        if self.app_state.entry.practice_mode:
+            return  # matches core.dnf()'s own no-op guard -- skip the dialog too
+        if not messagebox.askyesno(
+            "Did Not Finish Requested", "Do you want to terminate this Robot's entry?"
+        ):
+            return
+        self.core.dnf()
+        self._refresh_live_display()
+        if self.app_state.event.competition_id:
+            self._populate_entry_tree(self.app_state.event.competition_id)
+
+    def _on_new_mouse_clicked(self) -> None:
+        """`New_Mouse_Button_Click`, `Form1.cs:2592`. Legacy's grid-refresh
+        hack (jump `CurrentCell` to force `SelectionChanged` to re-fire) has
+        no Tkinter equivalent (`core.new_mouse`'s docstring) -- re-populate
+        the entry tree directly instead."""
+        if not messagebox.askyesno("New Mouse Requested", "Do you want to end this Robot's entry?"):
+            return
+        self.core.new_mouse()
+        self._update_robot_contestant_labels()
+        self._refresh_live_display()
+        if self.app_state.event.competition_id:
+            self._populate_entry_tree(self.app_state.event.competition_id)
+
+    def _on_practice_mode_clicked(self) -> None:
+        self.core.toggle_practice_mode()
+        self._set_entry_pane_enabled(not self.app_state.entry.practice_mode)
+        self._update_robot_contestant_labels()
+        self._refresh_live_display()
+
+    def _on_extra_run_clicked(self) -> None:
+        self.core.extra_run()
+        self._refresh_live_display()
+
+    def _on_watchdog_clicked(self) -> None:
+        self.core.toggle_watchdog()
+        self._refresh_watchdog_button_text()
+        self._refresh_live_display()
 
     # -- Connection ------------------------------------------------------
 
@@ -544,6 +681,7 @@ class MainWindow(tk.Tk):
         self._cfg.last_baud = baud
         config_module.save_config(self._cfg)
 
+        self._last_tick_time = time.monotonic()
         self._drain_after_id = self.after(POLL_INTERVAL_MS, self._drain_tick)
 
     def _disconnect(self) -> None:
@@ -562,9 +700,15 @@ class MainWindow(tk.Tk):
         self.connect_button.configure(text="Connect")
 
     def _drain_tick(self) -> None:
-        """The `after()`-driven queue-drain loop. Nothing downstream reacts
-        to the drained items yet (`.2`/`.3` add that) -- this only proves
-        the loop runs without error and reacts to a mid-session drop."""
+        """The `after()`-driven queue-drain loop. Also drives
+        `AppCore.tick()` (`APP-1.8.3`) -- the local-time interpolation
+        between real gate messages -- since this loop is the periodic timer
+        `APP-1.7` deferred that to."""
+        now = time.monotonic()
+        elapsed_ms = int((now - self._last_tick_time) * 1000) if self._last_tick_time is not None else 0
+        self._last_tick_time = now
+        self.core.tick(elapsed_ms)
+
         items = []
         if self._queue is not None:
             for _ in range(MAX_ITEMS_PER_TICK):
@@ -574,6 +718,8 @@ class MainWindow(tk.Tk):
                     break
         if items:
             self.core.drain_queue(items)
+
+        self._refresh_live_display()
 
         if not self.app_state.connection.serial_port_opened and self._reader is not None:
             self._disconnect()

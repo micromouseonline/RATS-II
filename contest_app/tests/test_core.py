@@ -364,3 +364,133 @@ def test_timer_state_transitions_fire_the_right_sound_callback(demo_db):
     core.handle_message(Message(4, 5))
 
     assert sounds == ["chimes.wav", "chord.wav", "tada.wav"]
+
+
+def test_extra_run_decrements_runs_used(demo_db):
+    core = make_core(demo_db)
+    core.state.run.no_of_runs_used = 3
+    core.extra_run()
+    assert core.state.run.no_of_runs_used == 2
+
+
+def test_extra_run_does_not_go_negative(demo_db):
+    core = make_core(demo_db)
+    core.state.run.no_of_runs_used = 0
+    core.extra_run()
+    assert core.state.run.no_of_runs_used == 0
+
+
+def test_toggle_watchdog_turns_off_and_resets_alarm(demo_db):
+    core = make_core(demo_db)
+    core.state.watchdog.watchdog_alarm = True
+    core.state.watchdog.watchdog_ms_since_reset = 5000
+
+    core.toggle_watchdog()
+
+    assert core.state.watchdog.watchdog_active is False
+    assert core.state.watchdog.watchdog_alarm is False
+    assert core.state.watchdog.watchdog_ms_since_reset == 0
+
+
+def test_toggle_watchdog_turns_back_on(demo_db):
+    core = make_core(demo_db)
+    core.toggle_watchdog()  # off
+    core.toggle_watchdog()  # on again
+    assert core.state.watchdog.watchdog_active is True
+
+
+def test_tick_advances_split_and_maze_time_while_running(demo_db):
+    core = make_core(demo_db)
+    core.state.run.split_time_running = True
+    core.state.run.maze_time_running = True
+    core.state.run.time_left_ms = 10000
+
+    core.tick(250)
+
+    assert core.state.run.split_time_ms == 250
+    assert core.state.run.maze_time_ms == 250
+    assert core.state.run.time_left_ms == 9750
+
+
+def test_tick_does_not_advance_when_not_running(demo_db):
+    core = make_core(demo_db)
+    core.tick(250)
+    assert core.state.run.split_time_ms == 0
+    assert core.state.run.maze_time_ms == 0
+
+
+def test_tick_freezes_split_time_to_run_time_once_run_complete(demo_db):
+    core = make_core(demo_db)
+    core.state.run.timing_gates_state = 5  # RUN_COMPLETE
+    core.state.run.run_time_ms = 4321
+    core.state.run.split_time_ms = 999
+
+    core.tick(100)
+
+    assert core.state.run.split_time_ms == 4321
+
+
+def test_tick_trips_watchdog_alarm_after_threshold(demo_db):
+    core = make_core(demo_db)
+
+    core.tick(1000)
+    assert core.state.watchdog.watchdog_alarm is False
+
+    core.tick(1001)
+    assert core.state.watchdog.watchdog_alarm is True
+
+
+def test_tick_does_not_touch_watchdog_when_inactive(demo_db):
+    core = make_core(demo_db)
+    core.state.watchdog.watchdog_active = False
+    core.state.watchdog.watchdog_ms_since_reset = 500
+
+    core.tick(5000)
+
+    assert core.state.watchdog.watchdog_ms_since_reset == 500
+    assert core.state.watchdog.watchdog_alarm is False
+
+
+def test_tick_watchdog_alarm_sounds_immediately_when_tripped(demo_db):
+    """`AppState.watchdog`'s default `watchdog_alarm_repeat_counter` (201)
+    means the very first tripped tick sounds immediately."""
+    sounds = []
+    core = AppCore(AppState(), demo_db, on_sound=sounds.append)
+    core.select_competition(MAZE_COMPETITION)
+    core.state.connection.serial_port_opened = True
+
+    core.tick(2001)
+
+    assert sounds == ["notify.wav"]
+    assert core.state.watchdog.watchdog_alarm_repeat_counter == 0
+
+
+def test_tick_watchdog_alarm_repeats_after_threshold_ticks(demo_db):
+    sounds = []
+    core = AppCore(AppState(), demo_db, on_sound=sounds.append)
+    core.select_competition(MAZE_COMPETITION)
+    core.state.connection.serial_port_opened = True
+    core.state.watchdog.watchdog_ms_since_reset = 2001
+    core.state.watchdog.watchdog_alarm = True
+    core.state.watchdog.watchdog_alarm_repeat_counter = 200
+
+    core.tick(0)
+    assert sounds == []
+    assert core.state.watchdog.watchdog_alarm_repeat_counter == 201
+
+    core.tick(0)
+    assert sounds == ["notify.wav"]
+    assert core.state.watchdog.watchdog_alarm_repeat_counter == 0
+
+
+def test_tick_watchdog_alarm_silent_without_serial_port_open(demo_db):
+    sounds = []
+    core = AppCore(AppState(), demo_db, on_sound=sounds.append)
+    core.select_competition(MAZE_COMPETITION)
+    core.state.connection.serial_port_opened = False
+
+    core.tick(2001)
+
+    assert core.state.watchdog.watchdog_alarm is True
+    assert sounds == []
+    assert core.state.watchdog.watchdog_alarm_repeat_counter == 201

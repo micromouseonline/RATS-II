@@ -412,17 +412,42 @@ tidiness).
           list is real — the current event only has `Final` competitions).
           **`Q-8` raised during this pass** (event selection / "most
           recent event" default) — not yet resolved, not blocking.
-    - [ ] **APP-1.8.3** — Run-control buttons + live display:
-          `Touch`/`DNF`/`Clear`/`New Mouse`/`Practice Mode`/
-          `Extra Run`/`WatchDog` wired to their `AppCore` methods, plus
-          the live run/score/rank/time-left display updating off the
-          drained queue. **Also where `APP-1.7`'s deliberately-deferred
-          local time interpolation gets wired up** (`Timer1_Tick`'s
-          `split_time_ms`/`maze_time_ms` ticking between real gate
-          messages) — it needs an actual periodic timer, which only
-          exists once this stage's `after()` loop is running. **Success:**
-          manual smoke test against real hardware exercising a full run,
-          including touches and a DNF.
+    - [x] **APP-1.8.3** — Run-control buttons + live display: `Add Touch`/
+          `DNF`/`Clear Display`/`New Robot`/`Practice <=> Contest`/
+          `Extra Run`/`WatchDog` wired to new/existing `AppCore` methods
+          (`touch`/`dnf`/`clear`/`new_mouse`/`toggle_practice_mode`, plus
+          two new ones this stage — `extra_run()`
+          (`ExtraRunButton_Click`, `Form1.cs:3410`) and `toggle_watchdog()`
+          (`WatchDogButton_Click`, `Form1.cs:3421`)), each followed by an
+          immediate `_refresh_live_display()` so this pane works with or
+          without a connection, matching `.2`'s precedent. **Practice-mode
+          gating landed here** (deferred from `.2`): `practice_mode`
+          defaults `true`, so the entry pane now actually starts disabled
+          until Practice Mode is toggled off, via a new
+          `_set_entry_pane_enabled()` called from the toggle and once at
+          startup. **Local time interpolation wired up**: new
+          `AppCore.tick(elapsed_ms)` — `Timer1_Tick`'s state-only logic
+          (`Form1.cs:2648`), ticking `split_time_ms`/`maze_time_ms` between
+          real gate messages, freezing `split_time_ms` to `run_time_ms` once
+          a run completes, and advancing the watchdog alarm/repeat-counter
+          — called from the `after()`-loop (`_drain_tick`) using a real
+          `time.monotonic()` elapsed duration rather than reproducing
+          legacy's `DateAndTime.Now.Millisecond`-wraparound quirk (an
+          interpolation estimate, not wire-protocol/DB-visible behavior).
+          **Simplification, noted not implemented:** legacy's `Timer1_Tick`
+          continuously blanks `Selected_Competition`/`Competition_Class_lbl`/
+          `time_left` text while `practice_mode` is on — not reproduced;
+          disabling the entry-pane widgets already conveys "not applicable
+          now" without an extra continuously-re-blanking display path.
+          **Success:** `contest_app/tests/test_run_control.py` (16 tests)
+          plus new `AppCore` coverage in `test_core.py` (12 tests: `tick`,
+          `extra_run`, `toggle_watchdog`) against real
+          `sample_data/demo.db` data; **user ran the manual checklist
+          against real hardware — all steps passed**, including DNF
+          (confirmed: terminates the current entry only, does not
+          auto-select a new one -- matches legacy) and Extra Run's
+          practice/contest-mode distinction (a no-op in practice mode since
+          `no_of_runs_used` stays 0 there; decrements it in contest mode).
     - [ ] **APP-1.8.4** — Monitor + log files + child-window launch
           buttons: the raw Tx/Rx `RichTextBox` monitor (`Monitor`/
           `Verbose` toggle buttons), **the two timestamped log files**

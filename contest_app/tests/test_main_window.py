@@ -60,13 +60,13 @@ def test_main_window_constructs_without_error(demo_db):
 
 
 def test_main_window_placeholder_widgets_start_disabled(demo_db):
-    """`.3`/`.4`'s widgets are still inert placeholders -- `.2`'s
-    (competition/entry trees, class dropdown) are active as of this stage
-    and covered separately in test_event_entry_selection.py."""
+    """`.4`'s widgets are still inert placeholders -- `.2`'s
+    (competition/entry trees, class dropdown) and `.3`'s (run-control
+    buttons) are active as of this stage and covered separately in
+    test_event_entry_selection.py / test_run_control.py."""
     skip_if_no_display()
     window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
     try:
-        assert str(window.touch_button["state"]) == "disabled"
         assert str(window.calibrate_button["state"]) == "disabled"
         assert str(window.monitor_toggle_button["state"]) == "disabled"
     finally:

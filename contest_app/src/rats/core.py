@@ -51,6 +51,13 @@ _SOUND_BY_STATE = {
 # "Discarding <2s run time" branch, Form1.cs:3018).
 _MIN_RUN_TIME_MS = 2000
 
+# Timer1_Tick's watchdog logic (Form1.cs:2648): no WatchDog (code 0) message
+# for this long trips the alarm, which then re-sounds every ~this many ticks
+# while it stays tripped (the repeat counter starts at 201, just over this
+# threshold, so it sounds immediately on the first tripped tick).
+_WATCHDOG_ALARM_THRESHOLD_MS = 2000
+_WATCHDOG_ALARM_REPEAT_TICKS = 200
+
 
 class AppCore:
     """One instance per running app, alongside one `AppState`. Owns no
@@ -333,3 +340,53 @@ class AppCore:
             return
         db.mark_entry_retired(self.conn, self.state.entry.entry_id)
         self.state.clear_timer()
+
+    def extra_run(self) -> None:
+        """`ExtraRunButton_Click`, `Form1.cs:3410`: grants one more run by
+        un-counting the last one used. No-op once already at zero."""
+        if self.state.run.no_of_runs_used > 0:
+            self.state.run.no_of_runs_used -= 1
+
+    def toggle_watchdog(self) -> None:
+        """`WatchDogButton_Click`, `Form1.cs:3421`. Both directions reset
+        the alarm and its timer identically -- only `watchdog_active`
+        differs."""
+        watchdog = self.state.watchdog
+        watchdog.watchdog_active = not watchdog.watchdog_active
+        watchdog.watchdog_alarm = False
+        watchdog.watchdog_ms_since_reset = 0
+
+    # -- Periodic local-time interpolation (`APP-1.8.3`) -------------------
+
+    def tick(self, elapsed_ms: int) -> None:
+        """`Timer1_Tick`'s state-only logic (`Form1.cs:2648`), run once per
+        `after()`-loop tick while connected (`APP-1.8`) -- ticks
+        `split_time_ms`/`maze_time_ms` between real gate messages, and
+        advances the watchdog timer. UI concerns (label colors/text) stay
+        in `MainWindow`; this only advances state.
+
+        Legacy computes `elapsed_ms` from `DateAndTime.Now.Millisecond`
+        (0-999, wrapping every second) -- a real elapsed-time duration
+        (e.g. from `time.monotonic()`) is used here instead of
+        reproducing that quirk, since it's just an interpolation
+        estimate, not part of the wire protocol or DB semantics."""
+        run = self.state.run
+        if run.split_time_running:
+            run.split_time_ms += elapsed_ms
+        if run.maze_time_running:
+            run.maze_time_ms += elapsed_ms
+            run.time_left_ms -= elapsed_ms
+        if run.timing_gates_state == _STATE_RUN_COMPLETE:
+            run.split_time_ms = run.run_time_ms
+
+        watchdog = self.state.watchdog
+        if watchdog.watchdog_active:
+            watchdog.watchdog_ms_since_reset += elapsed_ms
+            watchdog.watchdog_alarm = watchdog.watchdog_ms_since_reset > _WATCHDOG_ALARM_THRESHOLD_MS
+            if watchdog.watchdog_alarm and self.state.connection.serial_port_opened:
+                if watchdog.watchdog_alarm_repeat_counter > _WATCHDOG_ALARM_REPEAT_TICKS:
+                    if self.on_sound is not None:
+                        self.on_sound("notify.wav")
+                    watchdog.watchdog_alarm_repeat_counter = 0
+                else:
+                    watchdog.watchdog_alarm_repeat_counter += 1
