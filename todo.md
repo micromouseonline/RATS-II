@@ -384,12 +384,32 @@ tidiness).
           window's real width is known — `PanedWindow`'s `weight` alone
           only governs redistribution on a later resize, not the initial
           split).
-    - [ ] **APP-1.8.2** — Event/competition/entry selection: competition-
-          class dropdown + competition grid (`db.select_competitions`),
-          entry/mouse grid (`db.select_pending_entries`), wired to
-          `core.select_competition()`/`core.select_entry()`. **Success:**
-          manual smoke test against `sample_data/demo.db`'s real
-          event/competition/entry data.
+    - [x] **APP-1.8.2** — Event/competition/entry selection: class dropdown
+          (`{"Final", "Heats"}`, matching legacy's hardcoded list —
+          `Form1.cs:1669` — real data also has a `Playoff` class,
+          unreachable here just like in the legacy app) + competition tree
+          (`db.select_competitions`), entry/mouse tree
+          (`db.select_pending_entries`), wired to
+          `core.select_competition()`/`core.select_entry()`; event
+          name/date loaded from `Context` (`db.get_context`) on startup and
+          on every DB switch. Changing class or opening a new DB resets
+          everything downstream. **Scope decisions this stage:** practice-
+          mode gating (legacy no-ops this whole pane while
+          `practice_mode` is on) deferred to `APP-1.8.3` — that's what
+          actually wires the Practice Mode toggle, so gating on it now
+          would make `.2` untestable until `.3` lands, since
+          `practice_mode` defaults `true`; and legacy's "Connect a COM
+          port first" guard on entry selection isn't reproduced, since
+          `core.start_new_entry()` (`APP-1.7`) already tolerates
+          `transport is None` and just no-ops instead.
+          **Success:** `contest_app/tests/test_event_entry_selection.py`
+          (7 tests) against real `sample_data/demo.db` data; **user ran
+          the manual checklist — all 7 steps passed** (confirmed correct
+          ordering on the entry list, correct label updates, correct reset
+          behavior on class change and DB switch; step 3's empty Heats
+          list is real — the current event only has `Final` competitions).
+          **`Q-8` raised during this pass** (event selection / "most
+          recent event" default) — not yet resolved, not blocking.
     - [ ] **APP-1.8.3** — Run-control buttons + live display:
           `Touch`/`DNF`/`Clear`/`New Mouse`/`Practice Mode`/
           `Extra Run`/`WatchDog` wired to their `AppCore` methods, plus
@@ -703,3 +723,21 @@ more cleanly than in-place sanitization would have.
   (raw text + parsed `Message` or `None`) so a later logging layer
   (`APP-1.6`/`APP-1.8`) can log every line without this pure-parsing layer
   dropping any of them. See `APP-1.5`.
+- **Q-8** — Raised during `APP-1.8.2`'s manual smoke test, not yet
+  resolved: the user wants to be able to **select an event from the
+  database** (currently there's no way to at all — see below), defaulting
+  to the most recent one. **Current behavior, confirmed while answering
+  this:** `MainWindow._load_event_context()` (`contest_app/src/rats/
+  main_window.py`) just reads the `Context` table's singleton row
+  (`db.get_context`) — `Current_Event_ID`/`Current_Event`/`Effective_Date`
+  — exactly what legacy `Form1_Load` does (`Form1.cs:2183`). This is
+  whichever event something *else* marked "current" in that row, not a
+  "most recent by date" computation — there's no query anywhere (legacy or
+  this port) that picks the newest `Robotics_Event` row. Historically
+  that's been RATSdb's job (or a manual DB edit), not the timing app's.
+  **Open question:** does event selection belong in `contest_app` at all,
+  given `CLAUDE.md`'s split — `contest_app` is contest-time-only, working
+  within a single already-configured event, while `management_app`
+  (`REG-*`) owns "event and entry setup"? Needs a decision before
+  scheduling; not blocking `APP-1.8.2`, which only consumes whatever
+  `Context` currently points to, same as legacy.

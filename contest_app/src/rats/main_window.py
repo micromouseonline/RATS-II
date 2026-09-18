@@ -1,12 +1,13 @@
-"""Main window (`APP-1.8.1`): thin Tkinter wiring around `AppCore`
+"""Main window (`APP-1.8.1`/`.2`): thin Tkinter wiring around `AppCore`
 (`APP-1.7`).
 
 Builds the *entire* main-window layout up front, per the standing
 convention set for `APP-1.8`-`.12` (`plans/app-1-8-main-window-layout.md`):
 every region this stage through `APP-1.8.4` needs is laid out now, with
-anything not yet wired shown disabled/placeholder rather than absent. This
-stage (`.1`) only activates the connection toolbar (COM port/baud,
-Connect/Disconnect) and DB file selection -- `.2`-`.4` activate the rest.
+anything not yet wired shown disabled/placeholder rather than absent.
+`.1` activated the connection toolbar (COM port/baud, Connect/Disconnect)
+and DB file selection; `.2` activates the event/competition/entry
+selection pane -- `.3`/`.4` activate the rest.
 
 Layout uses a horizontal `ttk.PanedWindow` under a connection toolbar so
 the three main regions resize independently, with weighted `grid`/`pack`
@@ -26,6 +27,7 @@ from typing import Callable, Optional
 import serial.tools.list_ports
 
 from rats import config as config_module
+from rats import db
 from rats.core import AppCore
 from rats.serial_transport import SerialReader, Transport, open_serial_port
 from rats.state import AppState
@@ -35,6 +37,12 @@ DEFAULT_DB_PATH = REPO_ROOT / "sample_data" / "demo.db"
 
 BAUD_RATES = [9600, 19200, 38400, 57600, 115200]
 DEFAULT_BAUD = config_module.DEFAULT_BAUD
+
+# Legacy hardcodes exactly these two choices (`Form1.cs:1669`,
+# `Competition_Class_ComboBox.Items.AddRange(new object[2] { "Final", "Heats" })`)
+# rather than reading distinct classes from the DB -- real data also has a
+# "Playoff" class, unreachable via this dropdown in the legacy app too.
+COMPETITION_CLASSES = ["Final", "Heats"]
 
 WINDOW_TITLE = "RATS Contest Timing"
 # Legacy Form1's designed size (`Form1.cs:2092`, `ClientSize = new Size(884, 522)`).
@@ -107,10 +115,14 @@ class MainWindow(tk.Tk):
         self._queue: Optional["queue.Queue"] = None
         self._drain_after_id: Optional[str] = None
 
+        self._competitions_by_id: dict = {}
+        self._entries_by_id: dict = {}
+
         self._build_menu()
         self._build_layout()
         self._refresh_ports()
         self._apply_startup_geometry()
+        self._load_event_context()
 
     # -- Window geometry ----------------------------------------------------
 
@@ -209,8 +221,15 @@ class MainWindow(tk.Tk):
         )
 
     def _build_entry_pane(self, paned: ttk.PanedWindow) -> None:
-        """Pane 1: event/competition/entry selection (`APP-1.8.2`, inert
-        here)."""
+        """Pane 1: event/competition/entry selection (`APP-1.8.2`).
+
+        Practice-mode gating (`core.select_competition`'s docstring: "the
+        competition grid is disabled during practice mode") is deferred to
+        `APP-1.8.3`, which is what actually wires the Practice Mode toggle
+        and its state transitions -- this pane works regardless of
+        `practice_mode` for now, matching `.2`'s own success criterion (a
+        manual smoke test against `sample_data/demo.db`, no toggle needed
+        to reach it)."""
         frame = ttk.Frame(paned, padding=4)
         paned.add(frame, weight=1)
         frame.columnconfigure(0, weight=1)
@@ -228,16 +247,22 @@ class MainWindow(tk.Tk):
         ttk.Label(class_row, text="Class:").grid(row=0, column=0)
         self.competition_class_var = tk.StringVar()
         self.competition_class_combo = ttk.Combobox(
-            class_row, textvariable=self.competition_class_var, state="disabled"
+            class_row,
+            textvariable=self.competition_class_var,
+            state="readonly",
+            values=COMPETITION_CLASSES,
         )
         self.competition_class_combo.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+        self.competition_class_combo.bind(
+            "<<ComboboxSelected>>", self._on_competition_class_selected
+        )
 
         self.competition_tree = ttk.Treeview(
             frame, columns=("name",), show="headings", height=5, selectmode="browse"
         )
         self.competition_tree.heading("name", text="Competition")
         self.competition_tree.grid(row=3, column=0, sticky="nsew", pady=(4, 0))
-        self.competition_tree.state(["disabled"])
+        self.competition_tree.bind("<<TreeviewSelect>>", self._on_competition_selected)
 
         self.selected_competition_var = tk.StringVar(value="Selected: --")
         ttk.Label(frame, textvariable=self.selected_competition_var).grid(
@@ -249,7 +274,7 @@ class MainWindow(tk.Tk):
         )
         self.entry_tree.heading("mouse", text="Mouse")
         self.entry_tree.grid(row=6, column=0, sticky="nsew", pady=(4, 0))
-        self.entry_tree.state(["disabled"])
+        self.entry_tree.bind("<<TreeviewSelect>>", self._on_entry_selected)
 
         self.selected_robot_var = tk.StringVar(value="Robot: --")
         ttk.Label(frame, textvariable=self.selected_robot_var).grid(
@@ -380,6 +405,98 @@ class MainWindow(tk.Tk):
             btn.grid(row=row, column=col, sticky="ew", padx=2, pady=2)
             setattr(self, attr, btn)
 
+    # -- Event / competition / entry selection (`APP-1.8.2`) ---------------
+
+    def _load_event_context(self) -> None:
+        """`Form1_Load`'s `Context` read (`Form1.cs:2183`), minus the
+        "Stand Alone Mode" fallback -- `.1` already guarantees some DB is
+        always open, so a missing `Context` row (an unlikely but possible
+        malformed DB) just shows the placeholder text rather than a fake
+        event name."""
+        context = db.get_context(self.conn)
+        if context is None:
+            self.app_state.event.robotics_event_id = 0
+            self.app_state.event.robotics_event = ""
+            self.event_name_var.set("Event: --")
+            self.event_date_var.set("Date: --")
+            return
+        self.app_state.event.robotics_event_id = context.current_event_id
+        self.app_state.event.robotics_event = context.current_event
+        self.event_name_var.set(f"Event: {context.current_event}")
+        self.event_date_var.set(f"Date: {context.effective_date or '--'}")
+
+    def _reset_competition_and_entry_state(self) -> None:
+        """Clears everything downstream of "which DB is open" -- called
+        when a new database is opened (`_on_open_database`), since the old
+        DB's competitions/entries no longer apply."""
+        self.competition_class_var.set("")
+        for item in self.competition_tree.get_children():
+            self.competition_tree.delete(item)
+        self._competitions_by_id.clear()
+        self.selected_competition_var.set("Selected: --")
+        self._clear_entry_selection()
+
+    def _clear_entry_selection(self) -> None:
+        for item in self.entry_tree.get_children():
+            self.entry_tree.delete(item)
+        self._entries_by_id.clear()
+        self.selected_robot_var.set("Robot: --")
+        self.current_contestant_var.set("Contestant: --")
+
+    def _on_competition_class_selected(self, event: object = None) -> None:
+        """`Competition_Class_ComboBox_SelectedIndexChanged`, `Form1.cs:2237`."""
+        for item in self.competition_tree.get_children():
+            self.competition_tree.delete(item)
+        self._competitions_by_id.clear()
+        self.selected_competition_var.set("Selected: --")
+        self._clear_entry_selection()
+
+        selected_class = self.competition_class_var.get()
+        if not selected_class:
+            return
+        competitions = db.select_competitions(
+            self.conn, self.app_state.event.robotics_event_id, selected_class
+        )
+        for competition in competitions:
+            iid = str(competition.competition_id)
+            self._competitions_by_id[iid] = competition
+            self.competition_tree.insert("", "end", iid=iid, values=(competition.competition_name,))
+
+    def _on_competition_selected(self, event: object = None) -> None:
+        """`Competition_DataGridview_SelectionChanged`, `Form1.cs:2261`."""
+        selection = self.competition_tree.selection()
+        if not selection:
+            return
+        competition = self._competitions_by_id.get(selection[0])
+        if competition is None:
+            return
+
+        self.core.select_competition(competition)
+        self.selected_competition_var.set(f"Selected: {competition.competition_name}")
+        self._clear_entry_selection()
+
+        for entry in db.select_pending_entries(self.conn, competition.competition_id):
+            iid = str(entry.entry_id)
+            self._entries_by_id[iid] = entry
+            self.entry_tree.insert("", "end", iid=iid, values=(entry.mouse_name,))
+
+    def _on_entry_selected(self, event: object = None) -> None:
+        """`Mouse_DataGridview_SelectionChanged`, `Form1.cs:2335`. Legacy
+        requires `SerialPort1.IsOpen` here (it writes `NewMouse` straight to
+        the port) -- `core.start_new_entry()` already tolerates
+        `transport is None` (`APP-1.7`), so this works with or without a
+        connection instead of popping a "Connect a COM port first" dialog."""
+        selection = self.entry_tree.selection()
+        if not selection:
+            return
+        entry = self._entries_by_id.get(selection[0])
+        if entry is None:
+            return
+
+        self.core.select_entry(entry.entry_id, entry.mouse_name)
+        self.selected_robot_var.set(f"Robot: {self.app_state.entry.robot}")
+        self.current_contestant_var.set(f"Contestant: {self.app_state.entry.contestant}")
+
     # -- Connection ------------------------------------------------------
 
     def _refresh_ports(self) -> None:
@@ -486,6 +603,9 @@ class MainWindow(tk.Tk):
         self._db_path = path
         self.db_label_var.set(f"DB: {path.name}")
         old_conn.close()
+
+        self._reset_competition_and_entry_state()
+        self._load_event_context()
 
         self._cfg.last_db_path = str(path)
         config_module.save_config(self._cfg)
