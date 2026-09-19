@@ -112,9 +112,7 @@ class MainWindow(MainWindowLayout):
         else:
             self._db_path = db_path if db_path is not None else self._resolve_startup_db_path()
             self.conn = self._open_startup_db(self._db_path)
-        self.db_label_var.set(
-            f"DB: {self._db_path.name}" if self._db_path is not None else "DB: (unsaved)"
-        )
+        self._update_title()
 
         # Legacy's actual startup defaults (`monitor_input = 1`,
         # `verbose_monitor = 0`, `Form1`'s constructor) -- Form1-local UI
@@ -555,7 +553,7 @@ class MainWindow(MainWindowLayout):
         self.conn = new_conn
         self.core.conn = new_conn
         self._db_path = path
-        self.db_label_var.set(f"DB: {path.name}")
+        self._update_title()
         old_conn.close()
 
         self._reset_competition_and_entry_state()

@@ -73,11 +73,10 @@ class MainWindowLayout(tk.Tk):
     def __init__(self, *, cfg: Optional[AppConfig] = None):
         super().__init__()
         sv_ttk.set_theme(THEME)
-        self.title(WINDOW_TITLE)
-        self.bind("<Configure>", self._on_root_configure)
 
         self._cfg = cfg if cfg is not None else config_module.load_config()
         self._db_path: Optional[Path] = None
+        self._update_title()
 
         self._build_menu()
         self._build_layout()
@@ -98,16 +97,14 @@ class MainWindowLayout(tk.Tk):
         # setting explicitly once the window's actual width is known.
         self.update_idletasks()
         total_width = self._paned.winfo_width() or width
-        third = total_width // 3
         left_sash_pos = total_width * 260 // 800
         right_sash_pos = total_width * 480 // 800
         self._paned.sashpos(0, left_sash_pos)
         self._paned.sashpos(1, right_sash_pos)
 
-    def _on_root_configure(self, event: "tk.Event") -> None:
-        if event.widget is not self:
-            return
-        self.title(f"{WINDOW_TITLE} ({self.winfo_width()}x{self.winfo_height()})")
+    def _update_title(self) -> None:
+        db_name = self._db_path.name if self._db_path is not None else "NONE"
+        self.title(f"{WINDOW_TITLE} - {db_name}")
 
     # -- Layout -----------------------------------------------------------
 
@@ -137,7 +134,6 @@ class MainWindowLayout(tk.Tk):
     def _build_toolbar(self) -> None:
         toolbar = ttk.Frame(self, padding=4)
         toolbar.grid(row=0, column=0, sticky="ew")
-        toolbar.columnconfigure(5, weight=1)
 
         ttk.Label(toolbar, text="Port:").grid(row=0, column=0, padx=(0, 4))
         self.port_var = tk.StringVar()
@@ -161,12 +157,6 @@ class MainWindowLayout(tk.Tk):
             toolbar, text="Connect", command=self._on_connect_clicked
         )
         self.connect_button.grid(row=0, column=4, padx=(0, 12))
-
-        db_label = f"DB: {self._db_path.name}" if self._db_path is not None else "DB: (unsaved)"
-        self.db_label_var = tk.StringVar(value=db_label)
-        ttk.Label(toolbar, textvariable=self.db_label_var, anchor="e").grid(
-            row=0, column=5, sticky="e"
-        )
 
     def _build_entry_pane(self, paned: ttk.PanedWindow) -> None:
         """Pane 1: event/competition/entry selection (`APP-1.8.2`).

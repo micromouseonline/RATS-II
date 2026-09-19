@@ -82,7 +82,7 @@ def test_constructs_without_error():
         assert str(window.monitor_text) != ""
         assert str(window.competition_tree) != ""
         assert str(window.entry_tree) != ""
-        assert window.db_label_var.get() == "DB: (unsaved)"
+        assert window.title() == "RATS Contest Timing - NONE"
     finally:
         window.destroy()
 
@@ -112,27 +112,32 @@ def test_default_window_size_matches_legacy_client_size():
         window.destroy()
 
 
-def test_panes_start_at_equal_thirds():
+def test_panes_start_at_configured_ratios():
+    """Panes no longer split into equal thirds (user decision) -- the
+    left/right sash positions are a fixed 260:220:320 ratio (out of 800)
+    of the window's actual width, set in `_apply_startup_geometry`."""
     skip_if_no_display()
     window = MainWindowLayout(cfg=AppConfig())
     try:
         window.update_idletasks()
         total_width = window._paned.winfo_width()
-        third = total_width // 3
+        expected_left = total_width * 260 // 800
+        expected_right = total_width * 480 // 800
 
-        assert window._paned.sashpos(0) == third
-        assert window._paned.sashpos(1) == 2 * third
+        assert window._paned.sashpos(0) == expected_left
+        assert window._paned.sashpos(1) == expected_right
     finally:
         window.destroy()
 
 
-def test_title_shows_current_window_size():
+def test_title_shows_none_when_no_database_open():
+    """No DB is open at the pure-layout level (`self._db_path` defaults to
+    `None`) -- `MainWindow` sets a real path and updates the title once it
+    resolves/opens one."""
     skip_if_no_display()
     window = MainWindowLayout(cfg=AppConfig())
     try:
-        window.update_idletasks()
-        width, height = DEFAULT_WINDOW_SIZE
-        assert f"{width}x{height}" in window.title()
+        assert window.title() == "RATS Contest Timing - NONE"
     finally:
         window.destroy()
 
