@@ -522,6 +522,44 @@ tidiness).
           row to test against by hand; trusting the automated DB-mutation
           test (`test_name_contestants_backfills_real_db_rows`) for now,
           revisit manually later if it matters.
+    - [x] **APP-1.8-split** — `main_window.py` split into a pure-layout base
+          class + a behavior subclass, at the user's request: new to
+          Tkinter, they asked whether the layout code could run in
+          isolation for visual iteration without needing a database or
+          hardware. New `rats/main_window_layout.py` holds
+          `MainWindowLayout(tk.Tk)` — every `_build_*` method, window
+          geometry, port/baud population, and constants
+          (`THEME`/`WINDOW_TITLE`/`BAUD_RATES`/etc.), with every one of the
+          19 button/selection handlers stubbed to a harmless no-op so the
+          class is fully constructible and clickable standalone
+          (`python -m rats.main_window_layout`). `rats.main_window.MainWindow`
+          now `(MainWindowLayout)`, overriding every stub with its real,
+          unchanged implementation — pure reorganization, no behavior
+          change to the real app. One wrinkle resolved: `_build_toolbar`/
+          `_refresh_ports` need `self._cfg`/`self._db_path` before they
+          run, even though opening the real DB is a business concern —
+          `MainWindowLayout` now loads config itself (pure JSON I/O, no
+          DB/AppCore/serial coupling, so reasonably layout-tier;
+          injectable via a new `cfg=` param) and defaults `_db_path` to
+          `None` (renders the pre-existing `"DB: (unsaved)"` placeholder);
+          `MainWindow` resolves/opens the real DB afterward and updates
+          the label directly.
+          **Found and fixed a real, pre-existing test-hygiene bug while
+          verifying this**: every test using `make_main_window` was
+          silently overwriting the developer's actual
+          `~/.config/rats-contest-app/config.json` on every run
+          (`_on_open_database`/`destroy()` both call the real
+          `config_module.save_config()`) — at one point left
+          `last_db_path` pointing at a deleted pytest tmp file. Fixed by
+          extending the fixture to also redirect `config.config_path()`
+          into `tmp_path`. Same root-cause category as `APP-1.8.4`'s
+          log-directory fix; see `todo.md`'s pattern and the session's
+          memory notes.
+          **Success:** new `contest_app/tests/test_main_window_layout.py`
+          (base class only, zero DB dependency) plus the existing 163
+          tests unchanged and passing (166 total); manually confirmed both
+          `python -m rats.main_window_layout` (standalone preview) and
+          `python -m rats.main_window` (real app) construct correctly.
     - [ ] **APP-1.8.5** — Layout review checkpoint: with the full main
           window now built and every region live (`.1`–`.4`), user reviews
           it against `legacy/legacy-rats-screen.png` and requests whatever
