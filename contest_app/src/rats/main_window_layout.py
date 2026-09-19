@@ -99,8 +99,10 @@ class MainWindowLayout(tk.Tk):
         self.update_idletasks()
         total_width = self._paned.winfo_width() or width
         third = total_width // 3
-        self._paned.sashpos(0, third)
-        self._paned.sashpos(1, 2 * third)
+        left_sash_pos = total_width * 260 // 800
+        right_sash_pos = total_width * 480 // 800
+        self._paned.sashpos(0, left_sash_pos)
+        self._paned.sashpos(1, right_sash_pos)
 
     def _on_root_configure(self, event: "tk.Event") -> None:
         if event.widget is not self:
