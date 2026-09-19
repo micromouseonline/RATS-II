@@ -221,6 +221,25 @@ def test_start_new_entry_sends_new_mouse_and_clears_timer():
     assert core.state.run.score_time_ms == 0
 
 
+def test_start_new_entry_fires_on_tx_when_connected():
+    transport = FakeSerialTransport()
+    sent = []
+    core = AppCore(AppState(), None, transport=transport, on_tx=sent.append)
+
+    core.start_new_entry()
+
+    assert sent == ["<98,0>\n"]
+
+
+def test_start_new_entry_does_not_fire_on_tx_without_a_transport():
+    sent = []
+    core = AppCore(AppState(), None, transport=None, on_tx=sent.append)
+
+    core.start_new_entry()
+
+    assert sent == []
+
+
 def test_select_entry_looks_up_contestant_and_starts_new_entry(demo_db):
     transport = FakeSerialTransport()
     core = make_core(demo_db, transport=transport)

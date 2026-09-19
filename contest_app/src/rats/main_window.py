@@ -1,4 +1,4 @@
-"""Main window (`APP-1.8.1`-`.3`): thin Tkinter wiring around `AppCore`
+"""Main window (`APP-1.8.1`-`.4`): thin Tkinter wiring around `AppCore`
 (`APP-1.7`).
 
 Builds the *entire* main-window layout up front, per the standing
@@ -7,9 +7,10 @@ every region this stage through `APP-1.8.4` needs is laid out now, with
 anything not yet wired shown disabled/placeholder rather than absent.
 `.1` activated the connection toolbar (COM port/baud, Connect/Disconnect)
 and DB file selection; `.2` activated the event/competition/entry
-selection pane; `.3` activates the run-control buttons and live display,
-plus the periodic local-time interpolation (`AppCore.tick()`) -- `.4`
-activates the rest.
+selection pane; `.3` activated the run-control buttons and live display,
+plus the periodic local-time interpolation (`AppCore.tick()`); `.4`
+activates the monitor/log files and the child-window launch buttons --
+`APP-1.9`-`.12` build the child windows themselves.
 
 Layout uses a horizontal `ttk.PanedWindow` under a connection toolbar so
 the three main regions resize independently, with weighted `grid`/`pack`
@@ -23,6 +24,7 @@ import queue
 import sqlite3
 import time
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Optional
@@ -33,7 +35,8 @@ import sv_ttk
 from rats import config as config_module
 from rats import db
 from rats.core import AppCore
-from rats.serial_transport import SerialReader, Transport, open_serial_port
+from rats.serial_protocol import Line
+from rats.serial_transport import Disconnected, SerialReader, Transport, open_serial_port
 from rats.state import AppState
 
 # UI-2: sv_ttk's light theme, chosen over stock ttk after the user compared
@@ -118,6 +121,7 @@ class MainWindow(tk.Tk):
         conn: Optional[sqlite3.Connection] = None,
         db_path: Optional[Path] = None,
         open_serial_port_fn: Callable[[str, int], Transport] = open_serial_port,
+        log_dir: Optional[Path] = None,
     ):
         super().__init__()
         sv_ttk.set_theme(THEME)
@@ -134,7 +138,16 @@ class MainWindow(tk.Tk):
         else:
             self._db_path = db_path if db_path is not None else self._resolve_startup_db_path()
             self.conn = self._open_startup_db(self._db_path)
-        self.core = AppCore(self.app_state, self.conn)
+
+        # Legacy's actual startup defaults (`monitor_input = 1`,
+        # `verbose_monitor = 0`, `Form1`'s constructor) -- Form1-local UI
+        # fields, never `Public_Variables`, so plain attributes here rather
+        # than `AppState`.
+        self._monitor_on = True
+        self._verbose_on = False
+        self._open_log_files(log_dir if log_dir is not None else config_module.log_dir())
+
+        self.core = AppCore(self.app_state, self.conn, on_tx=self._log_tx)
 
         self._reader: Optional[SerialReader] = None
         self._queue: Optional["queue.Queue"] = None
@@ -157,6 +170,7 @@ class MainWindow(tk.Tk):
         self._set_entry_pane_enabled(not self.app_state.entry.practice_mode)
         self._refresh_watchdog_button_text()
         self._refresh_live_display()
+        self._refresh_monitor_button_texts()
 
     # -- Window geometry ----------------------------------------------------
 
@@ -396,7 +410,7 @@ class MainWindow(tk.Tk):
 
     def _build_monitor_pane(self, paned: ttk.PanedWindow) -> None:
         """Pane 3: raw Tx/Rx monitor, log toggles, child-window launch
-        buttons (`APP-1.8.4`/`.9`-`.12`, inert here)."""
+        buttons (`APP-1.8.4`)."""
         frame = ttk.Frame(paned, padding=4)
         paned.add(frame, weight=1)
         frame.columnconfigure(0, weight=1)
@@ -404,11 +418,17 @@ class MainWindow(tk.Tk):
 
         toggle_row = ttk.Frame(frame)
         toggle_row.grid(row=0, column=0, sticky="ew")
-        self.monitor_toggle_button = ttk.Button(toggle_row, text="Monitor", state="disabled")
+        self.monitor_toggle_button = ttk.Button(
+            toggle_row, text="Monitor", command=self._on_monitor_toggle_clicked
+        )
         self.monitor_toggle_button.pack(side="left")
-        self.verbose_toggle_button = ttk.Button(toggle_row, text="Verbose", state="disabled")
+        self.verbose_toggle_button = ttk.Button(
+            toggle_row, text="Verbose", command=self._on_verbose_toggle_clicked
+        )
         self.verbose_toggle_button.pack(side="left", padx=(4, 0))
-        self.monitor_clear_button = ttk.Button(toggle_row, text="Clear", state="disabled")
+        self.monitor_clear_button = ttk.Button(
+            toggle_row, text="Clear", command=self._on_monitor_clear_clicked
+        )
         self.monitor_clear_button.pack(side="left", padx=(4, 0))
 
         self.monitor_text = tk.Text(frame, height=10, state="disabled", wrap="none")
@@ -421,19 +441,23 @@ class MainWindow(tk.Tk):
         # as the C# class names (single_ch_display_v2/_16_9) suggest --
         # 612x595 is the original single_channel_display, 1280x720 the
         # 16:9 variant (UI-1's parametrized class covers all 3, APP-1.11).
+        # All 3 display buttons share one command/flag per UI-1 -- they're
+        # interchangeable skins of one window slot, not independent windows.
+        # No target windows exist until APP-1.9-.12 -- these just toggle the
+        # AppState.windows open flags for now.
         launch_specs = [
-            ("Calibrate", "calibrate_button"),
-            ("Run Order", "run_order_button"),
-            ("612 x 595", "display_1ch_button"),
-            ("800 x 600", "display_1ch_v2_button"),
-            ("1280 x 720", "display_1ch_wide_button"),
-            ("Results (1ch)", "results_1ch_button"),
-            ("Name Contestants", "name_contestants_button"),
+            ("Calibrate", "calibrate_button", self._on_calibrate_clicked),
+            ("Run Order", "run_order_button", self._on_run_order_clicked),
+            ("612 x 595", "display_1ch_button", self._on_display_clicked),
+            ("800 x 600", "display_1ch_v2_button", self._on_display_clicked),
+            ("1280 x 720", "display_1ch_wide_button", self._on_display_clicked),
+            ("Results (1ch)", "results_1ch_button", self._on_results_clicked),
+            ("Name Contestants", "name_contestants_button", self._on_name_contestants_clicked),
         ]
-        for i, (label, attr) in enumerate(launch_specs):
+        for i, (label, attr, handler) in enumerate(launch_specs):
             row, col = divmod(i, 4)
             launch_frame.columnconfigure(col, weight=1)
-            btn = ttk.Button(launch_frame, text=label, state="disabled")
+            btn = ttk.Button(launch_frame, text=label, command=handler)
             btn.grid(row=row, column=col, sticky="ew", padx=2, pady=2)
             setattr(self, attr, btn)
 
@@ -643,6 +667,114 @@ class MainWindow(tk.Tk):
         self._refresh_watchdog_button_text()
         self._refresh_live_display()
 
+    # -- Monitor + log files (`APP-1.8.4`) -----------------------------------
+
+    def _open_log_files(self, log_dir: Path) -> None:
+        """`Form1_Load`'s two `StreamWriter`s (`Form1.cs:2212-2216`),
+        relocated off the hardcoded Desktop path (user decision, `UI-2`'s
+        neighbor) to a per-user log directory, and opened unconditionally
+        regardless of connection state -- matching legacy exactly here."""
+        log_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._message_log_path = log_dir / f"RATS_message_log_{timestamp}.txt"
+        self._verbatim_log_path = log_dir / f"RATS_verbatim_log_{timestamp}.txt"
+        self._message_log = open(self._message_log_path, "a", encoding="utf-8")
+        self._verbatim_log = open(self._verbatim_log_path, "a", encoding="utf-8")
+
+    def _log_tx(self, msg: str) -> None:
+        """`AppCore`'s `on_tx` hook -- outbound sends never appear in the
+        on-screen monitor in legacy either, only in the `message` log."""
+        ts = datetime.now().isoformat(timespec="milliseconds")
+        self._message_log.write(f"Tx {ts} {msg.strip()}\n")
+        self._message_log.flush()
+
+    def _log_queue_item(self, item) -> None:
+        """Logs one queue item to both files -- called from `_drain_tick`
+        for every item, before `core.drain_queue()` dispatches it (per
+        `serial_transport.py`'s module docstring). Unlike legacy, this is
+        **not** gated by the Monitor toggle -- every line reaches the log
+        files regardless (user-confirmed: "every line, per Q-6, not just
+        successfully-parsed ones"); the toggle only controls the on-screen
+        `monitor_text` echo below."""
+        ts = datetime.now().isoformat(timespec="milliseconds")
+        if isinstance(item, Line):
+            self._verbatim_log.write(item.raw + "\n")
+            self._verbatim_log.flush()
+            if item.message is not None:
+                summary = f"Type={item.message.code} Value={item.message.value}"
+                self._message_log.write(f"Rx {ts} {summary}\n")
+                self._message_log.flush()
+                if self._monitor_on and item.message.code != 0:  # skip watchdog spam on-screen
+                    text = f"Rx {ts} {summary}"
+                    if self._verbose_on:
+                        text += f"  (raw: {item.raw!r})"
+                    self._append_monitor_line(text)
+            else:
+                self._message_log.write(f"Rx {ts} Unparsed: {item.raw}\n")
+                self._message_log.flush()
+                if self._monitor_on:
+                    self._append_monitor_line(f"Rx {ts} Unparsed: {item.raw}")
+        elif isinstance(item, Disconnected):
+            line = f"Rx {ts} Disconnected: {item.error}"
+            self._message_log.write(line + "\n")
+            self._message_log.flush()
+            if self._monitor_on:
+                self._append_monitor_line(line)
+
+    def _append_monitor_line(self, text: str) -> None:
+        self.monitor_text.configure(state="normal")
+        self.monitor_text.insert("end", text + "\n")
+        self.monitor_text.see("end")
+        self.monitor_text.configure(state="disabled")
+
+    def _refresh_monitor_button_texts(self) -> None:
+        self.monitor_toggle_button.configure(text="NoMonitor" if self._monitor_on else "Monitor")
+        self.verbose_toggle_button.configure(text="Concise" if self._verbose_on else "Verbose")
+
+    def _on_monitor_toggle_clicked(self) -> None:
+        self._monitor_on = not self._monitor_on
+        self._refresh_monitor_button_texts()
+
+    def _on_verbose_toggle_clicked(self) -> None:
+        self._verbose_on = not self._verbose_on
+        self._refresh_monitor_button_texts()
+
+    def _on_monitor_clear_clicked(self) -> None:
+        """`clear_BTN_Click`, `Form1.cs:2481` -- `commandCount` isn't
+        ported (confirmed dead code: declared, reset twice, never read or
+        incremented anywhere in the legacy app)."""
+        self.monitor_text.configure(state="normal")
+        self.monitor_text.delete("1.0", "end")
+        self.monitor_text.configure(state="disabled")
+
+    # -- Child-window launch buttons (`APP-1.8.4`) ---------------------------
+
+    def _on_calibrate_clicked(self) -> None:
+        w = self.app_state.windows
+        w.calibration_window_open = not w.calibration_window_open
+
+    def _on_run_order_clicked(self) -> None:
+        w = self.app_state.windows
+        w.run_order_window_open = not w.run_order_window_open
+
+    def _on_display_clicked(self) -> None:
+        """Shared by all 3 single-channel display buttons (`UI-1`) --
+        interchangeable skins of one window slot, one flag."""
+        w = self.app_state.windows
+        w.single_channel_window_open = not w.single_channel_window_open
+
+    def _on_results_clicked(self) -> None:
+        w = self.app_state.windows
+        w.single_channel_results_window_open = not w.single_channel_results_window_open
+
+    def _on_name_contestants_clicked(self) -> None:
+        """`Name_contestants_Button_Click`, `Form1.cs:3354` (`DB-5.1`) --
+        a real one-off DB maintenance action, not a window toggle."""
+        try:
+            db.backfill_contestant_names(self.conn)
+        except sqlite3.Error as exc:
+            messagebox.showerror("Name Contestants", str(exc))
+
     # -- Connection ------------------------------------------------------
 
     def _refresh_ports(self) -> None:
@@ -725,6 +857,8 @@ class MainWindow(tk.Tk):
                     items.append(self._queue.get_nowait())
                 except queue.Empty:
                     break
+        for item in items:
+            self._log_queue_item(item)
         if items:
             self.core.drain_queue(items)
 
@@ -775,6 +909,8 @@ class MainWindow(tk.Tk):
         self._cfg.last_window_width = self.winfo_width()
         self._cfg.last_window_height = self.winfo_height()
         config_module.save_config(self._cfg)
+        self._message_log.close()
+        self._verbatim_log.close()
         super().destroy()
 
 

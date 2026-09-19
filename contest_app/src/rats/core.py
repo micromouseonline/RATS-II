@@ -70,11 +70,13 @@ class AppCore:
         conn: sqlite3.Connection,
         transport: Optional[Transport] = None,
         on_sound: Optional[Callable[[str], None]] = None,
+        on_tx: Optional[Callable[[str], None]] = None,
     ):
         self.state = state
         self.conn = conn
         self.transport = transport
         self.on_sound = on_sound
+        self.on_tx = on_tx
 
     # -- Queue draining ---------------------------------------------------
 
@@ -319,7 +321,9 @@ class AppCore:
         `toggle_practice_mode()`/`new_mouse()` (3 separate call sites in
         the legacy app, `APP-1.0`), collapsed to one function here."""
         if self.transport is not None:
-            send_new_mouse(self.transport)
+            msg = send_new_mouse(self.transport)
+            if self.on_tx is not None:
+                self.on_tx(msg)
         self.state.clear_timer()
 
     def clear(self) -> None:

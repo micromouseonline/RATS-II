@@ -10,14 +10,9 @@ queue actually draining in a headless test run.
 import shutil
 
 from rats import db, main_window
-from rats.main_window import MainWindow
 
 from dbfixture import DEMO_DB
 from gui_helpers import skip_if_no_display
-
-
-def _make_window(conn):
-    return MainWindow(conn=conn, open_serial_port_fn=lambda port, baud: None)
 
 
 def _first_final_competition_with_entries(conn, event_id):
@@ -27,10 +22,10 @@ def _first_final_competition_with_entries(conn, event_id):
     raise AssertionError("sample_data/demo.db should have a Final competition with pending entries")
 
 
-def test_event_context_loaded_on_startup(demo_db):
+def test_event_context_loaded_on_startup(demo_db, make_main_window):
     skip_if_no_display()
     context = db.get_context(demo_db)
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         assert window.app_state.event.robotics_event_id == context.current_event_id
         assert window.event_name_var.get() == f"Event: {context.current_event}"
@@ -38,9 +33,9 @@ def test_event_context_loaded_on_startup(demo_db):
         window.destroy()
 
 
-def test_selecting_class_populates_competition_tree(demo_db):
+def test_selecting_class_populates_competition_tree(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         event_id = window.app_state.event.robotics_event_id
         expected = db.select_competitions(demo_db, event_id, "Final")
@@ -55,9 +50,9 @@ def test_selecting_class_populates_competition_tree(demo_db):
         window.destroy()
 
 
-def test_selecting_competition_updates_core_state_and_entry_tree(demo_db):
+def test_selecting_competition_updates_core_state_and_entry_tree(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         event_id = window.app_state.event.robotics_event_id
         competition = _first_final_competition_with_entries(demo_db, event_id)
@@ -77,9 +72,9 @@ def test_selecting_competition_updates_core_state_and_entry_tree(demo_db):
         window.destroy()
 
 
-def test_selecting_entry_updates_core_state_and_labels(demo_db):
+def test_selecting_entry_updates_core_state_and_labels(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         event_id = window.app_state.event.robotics_event_id
         competition = _first_final_competition_with_entries(demo_db, event_id)
@@ -100,9 +95,9 @@ def test_selecting_entry_updates_core_state_and_labels(demo_db):
         window.destroy()
 
 
-def test_changing_class_resets_downstream_selection(demo_db):
+def test_changing_class_resets_downstream_selection(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         event_id = window.app_state.event.robotics_event_id
         competition = _first_final_competition_with_entries(demo_db, event_id)
@@ -126,9 +121,9 @@ def test_changing_class_resets_downstream_selection(demo_db):
         window.destroy()
 
 
-def test_open_database_resets_and_reloads_event_context(demo_db, monkeypatch, tmp_path):
+def test_open_database_resets_and_reloads_event_context(demo_db, make_main_window, monkeypatch, tmp_path):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window.competition_class_var.set("Final")
         window._on_competition_class_selected()

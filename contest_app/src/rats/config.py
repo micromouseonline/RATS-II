@@ -32,6 +32,13 @@ def config_dir() -> Path:
     return Path.home() / ".config" / APP_DIR_NAME
 
 
+def log_dir() -> Path:
+    """Per-user log directory (`APP-1.8.4`) -- alongside `config_dir()`
+    rather than legacy's hardcoded Desktop path, and not next to whichever
+    DB happens to be open (the default DB lives inside the git repo)."""
+    return config_dir() / "logs"
+
+
 def config_path() -> Path:
     return config_dir() / CONFIG_FILE_NAME
 

@@ -471,22 +471,57 @@ tidiness).
           auto-select a new one -- matches legacy) and Extra Run's
           practice/contest-mode distinction (a no-op in practice mode since
           `no_of_runs_used` stays 0 there; decrements it in contest mode).
-    - [ ] **APP-1.8.4** — Monitor + log files + child-window launch
-          buttons: the raw Tx/Rx `RichTextBox` monitor (`Monitor`/
-          `Verbose` toggle buttons), **the two timestamped log files**
-          (user confirmed: replicate this — every line, per `Q-6`, not
-          just successfully-parsed ones — but relocated to sit next to
-          the open DB file or a project-local `logs/` dir instead of a
-          hardcoded `Desktop` path, which isn't meaningful cross-platform;
-          exact legacy filename pattern in
-          `plans/app-1-behavior-inventory.md`), and the four launch
-          buttons for the calibration/run-order/display/results windows
-          (`APP-1.9`–`.12` build the windows themselves; these just toggle
-          the existing open/close-request flags in `AppState.windows`).
-          **Success:** manual check that every line arriving on the queue
-          shows up in the log file, parsed or not; "constructs without
-          error" for the launch buttons (their target windows don't exist
-          until `.9`–`.12`).
+    - [x] **APP-1.8.4** — Monitor + log files + child-window launch
+          buttons. Read `Form1.cs`'s exact log-file behavior directly this
+          stage (not just `behavior_inventory.md`'s summary): two
+          `StreamWriter`s opened unconditionally in `Form1_Load` at
+          `Environment.SpecialFolder.Desktop`
+          (`RATS_message_log<yyyyMMddHHmmss>.txt` /
+          `RATS_verbatim_log<yyyyMMddHHmmss>.txt`, **no try/catch around
+          opening them** — a real legacy bug), closed in `Form1_Close`.
+          `verbatim` gets every raw byte unconditionally; `message` gets Tx
+          sends unconditionally but Rx *parsed* messages only when Monitor
+          is on and the code isn't `0` (watchdog) — **malformed lines are
+          never logged to file at all in legacy**, only shown on-screen.
+          **User-confirmed fix over legacy**: our `message`/`verbatim` logs
+          are complete regardless of the Monitor toggle — parsed, unparsed,
+          and `Disconnected` items all reach both files always; the toggle
+          only gates the on-screen `monitor_text` echo now. **Log location
+          decided this session**: the per-user app-data dir from
+          `APP-1.8.1`'s `config.py` (new `config.log_dir()` — sibling of
+          `config_dir()`), not next to the DB file — avoids ever writing
+          into the git repo (the default DB lives there) or a read-only/
+          network-mounted real DB location. `commandCount` confirmed dead
+          code (declared, reset twice, never read/incremented) — not
+          ported. **New `AppCore`/`serial_transport` hook**: `send_new_mouse`/
+          `send_set_mode` now return the string they sent;
+          `AppCore.__init__` gained `on_tx`, called from
+          `start_new_entry()` — lets `MainWindow` log Tx sends without
+          duplicating "is connected" checks across `.2`/`.3`'s 3 call
+          sites (mirrors the existing `on_sound` pattern).
+          **Launch buttons**: all 6 wired — 5 toggle `AppState.windows`
+          flags (the 3 display buttons share one flag per `UI-1`); Name
+          Contestants is different, a real DB action
+          (`db.backfill_contestant_names`, `DB-5.1`), not a flag toggle.
+          **Test-infra fix, applies retroactively**: added a shared
+          `make_main_window` fixture (`tests/conftest.py`) that always
+          injects a `tmp_path` log directory — the pre-existing `.2`/`.3`
+          tests were constructing `MainWindow()` without a `log_dir`
+          override and had started writing real (empty) log files into the
+          actual per-user `config.log_dir()` on every test run; same root
+          cause category as the `APP-1.8.3` demo-DB-mutation incident (a
+          test/script hitting a real default path instead of an injected
+          one) — caught and fixed before it went further.
+          **Success:** `contest_app/tests/test_monitor_log.py` (16 tests)
+          plus 2 new `on_tx` tests in `test_core.py`, all passing (163
+          total). **User ran the manual checklist against real hardware —
+          steps 1-7 and 9 all passed** (Monitor/Verbose/Clear, watchdog
+          on-screen suppression, verbose raw-suffix, Tx logging, all 6
+          launch buttons, fresh log files per run). **Step 8 (Name
+          Contestants) deferred** — the user didn't have a `"_"`-placeholder
+          row to test against by hand; trusting the automated DB-mutation
+          test (`test_name_contestants_backfills_real_db_rows`) for now,
+          revisit manually later if it matters.
     - [ ] **APP-1.8.5** — Layout review checkpoint: with the full main
           window now built and every region live (`.1`–`.4`), user reviews
           it against `legacy/legacy-rats-screen.png` and requests whatever

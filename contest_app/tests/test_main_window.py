@@ -12,7 +12,6 @@ from rats.main_window import (
     DEFAULT_BAUD,
     DEFAULT_WINDOW_SIZE,
     RESTORE_WINDOW_SIZE,
-    MainWindow,
     list_available_ports,
 )
 
@@ -44,9 +43,9 @@ def test_baud_rates_include_legacy_and_new_speed():
     assert DEFAULT_BAUD == 9600
 
 
-def test_main_window_constructs_without_error(demo_db):
+def test_main_window_constructs_without_error(demo_db, make_main_window):
     skip_if_no_display()
-    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    window = make_main_window(demo_db)
     try:
         window.update_idletasks()
 
@@ -59,24 +58,26 @@ def test_main_window_constructs_without_error(demo_db):
         window.destroy()
 
 
-def test_main_window_placeholder_widgets_start_disabled(demo_db):
-    """`.4`'s widgets are still inert placeholders -- `.2`'s
-    (competition/entry trees, class dropdown) and `.3`'s (run-control
-    buttons) are active as of this stage and covered separately in
-    test_event_entry_selection.py / test_run_control.py."""
+def test_main_window_child_windows_not_built_yet(demo_db, make_main_window):
+    """`APP-1.9`-`.12` haven't built the calibration/run-order/display/
+    results windows yet, but their launch buttons are active as of `.4`
+    (they just toggle `AppState.windows` flags) -- see test_monitor_log.py.
+    Every other pane's widgets are active too as of `.2`/`.3`, covered in
+    test_event_entry_selection.py / test_run_control.py. Nothing in
+    MainWindow itself should still be `disabled` at this point."""
     skip_if_no_display()
-    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    window = make_main_window(demo_db)
     try:
-        assert str(window.calibrate_button["state"]) == "disabled"
-        assert str(window.monitor_toggle_button["state"]) == "disabled"
+        assert str(window.calibrate_button["state"]) == "normal"
+        assert str(window.monitor_toggle_button["state"]) == "normal"
     finally:
         window.destroy()
 
 
-def test_default_window_size_matches_legacy_client_size(demo_db):
+def test_default_window_size_matches_legacy_client_size(demo_db, make_main_window):
     """Legacy Form1's designed ClientSize, `Form1.cs:2092`."""
     skip_if_no_display()
-    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    window = make_main_window(demo_db)
     try:
         window.update_idletasks()
         assert (window.winfo_width(), window.winfo_height()) == DEFAULT_WINDOW_SIZE
@@ -84,9 +85,9 @@ def test_default_window_size_matches_legacy_client_size(demo_db):
         window.destroy()
 
 
-def test_panes_start_at_equal_thirds(demo_db):
+def test_panes_start_at_equal_thirds(demo_db, make_main_window):
     skip_if_no_display()
-    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    window = make_main_window(demo_db)
     try:
         window.update_idletasks()
         total_width = window._paned.winfo_width()
@@ -98,9 +99,9 @@ def test_panes_start_at_equal_thirds(demo_db):
         window.destroy()
 
 
-def test_title_shows_current_window_size(demo_db):
+def test_title_shows_current_window_size(demo_db, make_main_window):
     skip_if_no_display()
-    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    window = make_main_window(demo_db)
     try:
         window.update_idletasks()
         width, height = DEFAULT_WINDOW_SIZE
@@ -109,7 +110,7 @@ def test_title_shows_current_window_size(demo_db):
         window.destroy()
 
 
-def test_restoring_saved_window_size_is_currently_disabled(demo_db, monkeypatch):
+def test_restoring_saved_window_size_is_currently_disabled(demo_db, make_main_window, monkeypatch):
     """RESTORE_WINDOW_SIZE gates reading the saved size back on startup --
     the size is still saved (see the next test), just not applied yet."""
     skip_if_no_display()
@@ -121,7 +122,7 @@ def test_restoring_saved_window_size_is_currently_disabled(demo_db, monkeypatch)
         lambda: AppConfig(last_window_width=1234, last_window_height=999),
     )
 
-    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    window = make_main_window(demo_db)
     try:
         window.update_idletasks()
         assert (window.winfo_width(), window.winfo_height()) == DEFAULT_WINDOW_SIZE
@@ -129,7 +130,7 @@ def test_restoring_saved_window_size_is_currently_disabled(demo_db, monkeypatch)
         window.destroy()
 
 
-def test_window_size_is_saved_on_close(demo_db, monkeypatch):
+def test_window_size_is_saved_on_close(demo_db, make_main_window, monkeypatch):
     skip_if_no_display()
     saved = {}
     monkeypatch.setattr(
@@ -138,7 +139,7 @@ def test_window_size_is_saved_on_close(demo_db, monkeypatch):
         lambda cfg: saved.update(width=cfg.last_window_width, height=cfg.last_window_height),
     )
 
-    window = MainWindow(conn=demo_db, open_serial_port_fn=lambda port, baud: None)
+    window = make_main_window(demo_db)
     window.update_idletasks()
     window.destroy()
 

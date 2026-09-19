@@ -133,12 +133,19 @@ def open_serial_port(port_name: str, baud_rate: int, *, read_timeout: float = 0.
     return ser
 
 
-def send_new_mouse(transport: Transport) -> None:
+def send_new_mouse(transport: Transport) -> str:
     """`<98,0>` -- sent on entry/robot selection. Straight to the wire, not
-    through the queue (see module docstring)."""
-    transport.write(format_new_mouse().encode("ascii"))
+    through the queue (see module docstring). Returns the formatted string
+    sent, so callers (`AppCore.start_new_entry`, `APP-1.8.4`) can log it
+    without reformatting."""
+    msg = format_new_mouse()
+    transport.write(msg.encode("ascii"))
+    return msg
 
 
-def send_set_mode(transport: Transport, mode: str) -> None:
-    """`<99,CALIBRATION>`/`<99,TIMER>` -- calibration mode toggle."""
-    transport.write(format_set_mode(mode).encode("ascii"))
+def send_set_mode(transport: Transport, mode: str) -> str:
+    """`<99,CALIBRATION>`/`<99,TIMER>` -- calibration mode toggle. Returns
+    the formatted string sent (see `send_new_mouse`)."""
+    msg = format_set_mode(mode)
+    transport.write(msg.encode("ascii"))
+    return msg

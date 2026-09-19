@@ -8,21 +8,16 @@ test run. `messagebox.askyesno` is monkeypatched for the two confirm-dialog
 buttons (DNF, New Mouse) rather than driven interactively.
 """
 from rats import main_window
-from rats.main_window import MainWindow
 
 from gui_helpers import skip_if_no_display
 
 
-def _make_window(conn):
-    return MainWindow(conn=conn, open_serial_port_fn=lambda port, baud: None)
-
-
-def test_entry_pane_starts_disabled_in_practice_mode(demo_db):
+def test_entry_pane_starts_disabled_in_practice_mode(demo_db, make_main_window):
     """`practice_mode` defaults `true` (`AppState.entry`), so the entry
     pane starts disabled until Practice Mode is toggled off -- a real
     behavior change from `.2` alone, where nothing gated it yet."""
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         assert window.app_state.entry.practice_mode is True
         assert str(window.competition_class_combo["state"]) == "disabled"
@@ -32,9 +27,9 @@ def test_entry_pane_starts_disabled_in_practice_mode(demo_db):
         window.destroy()
 
 
-def test_practice_mode_toggle_enables_entry_pane(demo_db):
+def test_practice_mode_toggle_enables_entry_pane(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window._on_practice_mode_clicked()
 
@@ -50,9 +45,9 @@ def test_practice_mode_toggle_enables_entry_pane(demo_db):
         window.destroy()
 
 
-def test_touch_button_increments_touch_count_and_display(demo_db):
+def test_touch_button_increments_touch_count_and_display(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window._on_touch_clicked()
         window._on_touch_clicked()
@@ -63,9 +58,9 @@ def test_touch_button_increments_touch_count_and_display(demo_db):
         window.destroy()
 
 
-def test_clear_button_resets_run_state_and_display(demo_db):
+def test_clear_button_resets_run_state_and_display(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window.app_state.run.no_of_touches = 5
         window.app_state.run.score_time_ms = 1234
@@ -79,9 +74,9 @@ def test_clear_button_resets_run_state_and_display(demo_db):
         window.destroy()
 
 
-def test_extra_run_button_decrements_runs_used(demo_db):
+def test_extra_run_button_decrements_runs_used(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window.app_state.run.no_of_runs_used = 2
         window._on_extra_run_clicked()
@@ -91,9 +86,9 @@ def test_extra_run_button_decrements_runs_used(demo_db):
         window.destroy()
 
 
-def test_watchdog_button_toggles_state_and_caption(demo_db):
+def test_watchdog_button_toggles_state_and_caption(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         assert window.app_state.watchdog.watchdog_active is True
         assert window.watchdog_button["text"] == "WatchDog is On"
@@ -109,9 +104,9 @@ def test_watchdog_button_toggles_state_and_caption(demo_db):
         window.destroy()
 
 
-def test_dnf_does_nothing_in_practice_mode_without_a_dialog(demo_db, monkeypatch):
+def test_dnf_does_nothing_in_practice_mode_without_a_dialog(demo_db, make_main_window, monkeypatch):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         assert window.app_state.entry.practice_mode is True
         asked = []
@@ -124,9 +119,9 @@ def test_dnf_does_nothing_in_practice_mode_without_a_dialog(demo_db, monkeypatch
         window.destroy()
 
 
-def test_dnf_confirmed_marks_entry_retired_and_refreshes_tree(demo_db, monkeypatch):
+def test_dnf_confirmed_marks_entry_retired_and_refreshes_tree(demo_db, make_main_window, monkeypatch):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window._on_practice_mode_clicked()  # leave practice mode
         window.competition_class_var.set("Final")
@@ -146,9 +141,9 @@ def test_dnf_confirmed_marks_entry_retired_and_refreshes_tree(demo_db, monkeypat
         window.destroy()
 
 
-def test_dnf_declined_leaves_entry_untouched(demo_db, monkeypatch):
+def test_dnf_declined_leaves_entry_untouched(demo_db, make_main_window, monkeypatch):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window._on_practice_mode_clicked()
         window.competition_class_var.set("Final")
@@ -168,9 +163,9 @@ def test_dnf_declined_leaves_entry_untouched(demo_db, monkeypatch):
         window.destroy()
 
 
-def test_new_mouse_confirmed_clears_selection_labels(demo_db, monkeypatch):
+def test_new_mouse_confirmed_clears_selection_labels(demo_db, make_main_window, monkeypatch):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window._on_practice_mode_clicked()
         window.competition_class_var.set("Final")
@@ -194,9 +189,9 @@ def test_new_mouse_confirmed_clears_selection_labels(demo_db, monkeypatch):
         window.destroy()
 
 
-def test_new_mouse_declined_leaves_selection_alone(demo_db, monkeypatch):
+def test_new_mouse_declined_leaves_selection_alone(demo_db, make_main_window, monkeypatch):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window._on_practice_mode_clicked()
         window.competition_class_var.set("Final")
@@ -217,9 +212,9 @@ def test_new_mouse_declined_leaves_selection_alone(demo_db, monkeypatch):
         window.destroy()
 
 
-def test_refresh_live_display_formats_values_from_state(demo_db):
+def test_refresh_live_display_formats_values_from_state(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         run = window.app_state.run
         run.split_time_ms = 1230
@@ -252,9 +247,9 @@ def test_refresh_live_display_formats_values_from_state(demo_db):
         window.destroy()
 
 
-def test_refresh_live_display_shows_error_on_watchdog_alarm(demo_db):
+def test_refresh_live_display_shows_error_on_watchdog_alarm(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window.app_state.watchdog.watchdog_alarm = True
         window._refresh_live_display()
@@ -263,9 +258,9 @@ def test_refresh_live_display_shows_error_on_watchdog_alarm(demo_db):
         window.destroy()
 
 
-def test_tick_interpolation_reflects_in_live_display(demo_db):
+def test_tick_interpolation_reflects_in_live_display(demo_db, make_main_window):
     skip_if_no_display()
-    window = _make_window(demo_db)
+    window = make_main_window(demo_db)
     try:
         window.app_state.run.split_time_running = True
         window.core.tick(500)
