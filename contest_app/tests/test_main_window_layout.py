@@ -7,11 +7,14 @@ dependency, so it constructs and can be clicked with nothing but Tkinter
 itself. Config is injected via `cfg=AppConfig(...)` rather than touching
 the real per-user config file, for determinism.
 """
+from datetime import datetime
+
 from rats.config import AppConfig
 from rats.main_window_layout import (
     BAUD_RATES,
     DEFAULT_BAUD,
     DEFAULT_WINDOW_SIZE,
+    NO_EVENT_TEXT,
     RESTORE_WINDOW_SIZE,
     MainWindowLayout,
     list_available_ports,
@@ -138,6 +141,23 @@ def test_title_shows_none_when_no_database_open():
     window = MainWindowLayout(cfg=AppConfig())
     try:
         assert window.title() == "RATS Contest Timing - NONE"
+    finally:
+        window.destroy()
+
+
+def test_info_bar_shows_placeholders_before_any_event_is_loaded():
+    """Top info bar (Date/Contest Name/Mode) starts at its placeholder
+    values -- `MainWindow` overwrites `event_name_var` once it loads a real
+    `Context` row (and `event_date_var` with the real effective date), and
+    `mode_var` once it knows the real `practice_mode` state. With no
+    database open, the date shown is today's date (user decision), not a
+    dash."""
+    skip_if_no_display()
+    window = MainWindowLayout(cfg=AppConfig())
+    try:
+        assert window.event_date_var.get() == datetime.now().strftime("%d/%m/%Y")
+        assert window.event_name_var.get() == NO_EVENT_TEXT
+        assert window.mode_var.get() == "PRACTICE"
     finally:
         window.destroy()
 

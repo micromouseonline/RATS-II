@@ -1,5 +1,8 @@
-"""Small per-user config file (`APP-1.8.1`): remembers the last-opened DB
-path, serial port, and baud rate across sessions.
+"""Small per-user config file (`APP-1.8.1`): remembers the last-used serial
+port and baud rate across sessions. **Not** the last-opened DB path (user
+decision: a remembered path can point at a file that's since moved/been
+deleted, so the app now always starts with no database open and requires
+an explicit File -> Open Database... every launch).
 
 Lives outside the repo in a per-user config directory (not project-local),
 so it survives moving/reinstalling the checkout and needs no `.gitignore`
@@ -45,7 +48,6 @@ def config_path() -> Path:
 
 @dataclass
 class AppConfig:
-    last_db_path: Optional[str] = None
     last_port: Optional[str] = None
     last_baud: int = DEFAULT_BAUD
     # Saved on every close, but not yet read back on startup --
@@ -70,7 +72,6 @@ def load_config(path: Optional[Path] = None) -> AppConfig:
         return AppConfig()
     defaults = AppConfig()
     return AppConfig(
-        last_db_path=data.get("last_db_path", defaults.last_db_path),
         last_port=data.get("last_port", defaults.last_port),
         last_baud=data.get("last_baud", defaults.last_baud),
         last_window_width=data.get("last_window_width", defaults.last_window_width),

@@ -20,6 +20,7 @@ Run directly (`python -m rats.main_window_layout`) to preview the layout.
 from __future__ import annotations
 
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import ttk
 from typing import Optional
@@ -57,6 +58,15 @@ DEFAULT_BAUD = config_module.DEFAULT_BAUD
 # rather than reading distinct classes from the DB -- real data also has a
 # "Playoff" class, unreachable via this dropdown in the legacy app too.
 COMPETITION_CLASSES = ["Final", "Heats"]
+
+# User-requested top info bar (date/contest name/mode): large, blue, no
+# field-name prefixes -- a scoreboard-style banner, not a form label.
+_INFO_BAR_FONT = ("TkDefaultFont", 16, "bold")
+_INFO_BAR_COLOR = "blue"
+# Shown until a real Context row is loaded (no DB open, or one without a
+# Context table row) -- reuses legacy's "Stand Alone Mode" name (Q-4) as
+# just a placeholder label now, not a functional degraded mode.
+NO_EVENT_TEXT = "STAND ALONE"
 
 
 def list_available_ports() -> list[str]:
@@ -119,12 +129,13 @@ class MainWindowLayout(tk.Tk):
 
     def _build_layout(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(2, weight=1)
 
         self._build_toolbar()
+        self._build_info_bar()
 
         paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        paned.grid(row=1, column=0, sticky="nsew")
+        paned.grid(row=2, column=0, sticky="nsew")
         self._paned = paned
 
         self._build_entry_pane(paned)
@@ -158,6 +169,47 @@ class MainWindowLayout(tk.Tk):
         )
         self.connect_button.grid(row=0, column=4, padx=(0, 12))
 
+    def _build_info_bar(self) -> None:
+        """User-requested top info row: Date (left, value only), Contest
+        Name (centre, name only), Mode (right, `PRACTICE`/`CONTEST`) --
+        replaces the small Event/Date labels that used to live in the
+        entry pane, so this is the one place that information now lives."""
+        bar = ttk.Frame(self, padding=4)
+        bar.grid(row=1, column=0, sticky="ew")
+        bar.columnconfigure(0, weight=1)
+        bar.columnconfigure(1, weight=1)
+        bar.columnconfigure(2, weight=1)
+
+        # With no database open (this class's permanent state), the date
+        # shown is today's date -- user decision, `main_window.py`'s
+        # `_load_event_context` does the same for the real subclass.
+        self.event_date_var = tk.StringVar(value=datetime.now().strftime("%d/%m/%Y"))
+        ttk.Label(
+            bar,
+            textvariable=self.event_date_var,
+            font=_INFO_BAR_FONT,
+            foreground=_INFO_BAR_COLOR,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w")
+
+        self.event_name_var = tk.StringVar(value=NO_EVENT_TEXT)
+        ttk.Label(
+            bar,
+            textvariable=self.event_name_var,
+            font=_INFO_BAR_FONT,
+            foreground=_INFO_BAR_COLOR,
+            anchor="center",
+        ).grid(row=0, column=1, sticky="ew")
+
+        self.mode_var = tk.StringVar(value="PRACTICE")
+        ttk.Label(
+            bar,
+            textvariable=self.mode_var,
+            font=_INFO_BAR_FONT,
+            foreground=_INFO_BAR_COLOR,
+            anchor="e",
+        ).grid(row=0, column=2, sticky="e")
+
     def _build_entry_pane(self, paned: ttk.PanedWindow) -> None:
         """Pane 1: event/competition/entry selection (`APP-1.8.2`).
 
@@ -170,16 +222,11 @@ class MainWindowLayout(tk.Tk):
         frame = ttk.Frame(paned, padding=4)
         paned.add(frame, weight=1)
         frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(3, weight=1)
-        frame.rowconfigure(6, weight=1)
-
-        self.event_name_var = tk.StringVar(value="Event: --")
-        ttk.Label(frame, textvariable=self.event_name_var).grid(row=0, column=0, sticky="w")
-        self.event_date_var = tk.StringVar(value="Date: --")
-        ttk.Label(frame, textvariable=self.event_date_var).grid(row=1, column=0, sticky="w")
+        frame.rowconfigure(1, weight=1)
+        frame.rowconfigure(2, weight=1)
 
         class_row = ttk.Frame(frame)
-        class_row.grid(row=2, column=0, sticky="ew", pady=(4, 0))
+        class_row.grid(row=0, column=0, sticky="ew")
         class_row.columnconfigure(1, weight=1)
         ttk.Label(class_row, text="Class:").grid(row=0, column=0)
         self.competition_class_var = tk.StringVar()
@@ -198,28 +245,26 @@ class MainWindowLayout(tk.Tk):
             frame, columns=("name",), show="headings", height=5, selectmode="browse"
         )
         self.competition_tree.heading("name", text="Competition")
-        self.competition_tree.grid(row=3, column=0, sticky="nsew", pady=(4, 0))
+        self.competition_tree.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
         self.competition_tree.bind("<<TreeviewSelect>>", self._on_competition_selected)
 
-        self.selected_competition_var = tk.StringVar(value="Selected: --")
-        ttk.Label(frame, textvariable=self.selected_competition_var).grid(
-            row=4, column=0, sticky="w", pady=(4, 0)
-        )
-
+        # No "Selected: <competition>" label here anymore -- the top info
+        # bar's mode cell shows the current competition name instead (user
+        # decision), so this pane doesn't need to duplicate it.
         self.entry_tree = ttk.Treeview(
             frame, columns=("mouse",), show="headings", height=5, selectmode="browse"
         )
         self.entry_tree.heading("mouse", text="Mouse")
-        self.entry_tree.grid(row=6, column=0, sticky="nsew", pady=(4, 0))
+        self.entry_tree.grid(row=2, column=0, sticky="nsew", pady=(4, 0))
         self.entry_tree.bind("<<TreeviewSelect>>", self._on_entry_selected)
 
         self.selected_robot_var = tk.StringVar(value="Robot: --")
         ttk.Label(frame, textvariable=self.selected_robot_var).grid(
-            row=7, column=0, sticky="w", pady=(4, 0)
+            row=3, column=0, sticky="w", pady=(4, 0)
         )
         self.current_contestant_var = tk.StringVar(value="Contestant: --")
         ttk.Label(frame, textvariable=self.current_contestant_var).grid(
-            row=8, column=0, sticky="w"
+            row=4, column=0, sticky="w"
         )
 
     def _build_run_pane(self, paned: ttk.PanedWindow) -> None:

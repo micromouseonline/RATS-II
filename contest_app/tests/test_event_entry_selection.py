@@ -10,6 +10,7 @@ queue actually draining in a headless test run.
 import shutil
 
 from rats import db, main_window
+from rats.main_window import _format_event_date
 
 from dbfixture import DEMO_DB
 from gui_helpers import skip_if_no_display
@@ -28,7 +29,8 @@ def test_event_context_loaded_on_startup(demo_db, make_main_window):
     window = make_main_window(demo_db)
     try:
         assert window.app_state.event.robotics_event_id == context.current_event_id
-        assert window.event_name_var.get() == f"Event: {context.current_event}"
+        assert window.event_name_var.get() == context.current_event
+        assert window.event_date_var.get() == _format_event_date(context.effective_date)
     finally:
         window.destroy()
 
@@ -63,11 +65,41 @@ def test_selecting_competition_updates_core_state_and_entry_tree(demo_db, make_m
         window._on_competition_selected()
 
         assert window.app_state.event.competition_id == competition.competition_id
-        assert window.selected_competition_var.get() == f"Selected: {competition.competition_name}"
+        assert window.app_state.event.competition_name == competition.competition_name
 
         expected_entries = db.select_pending_entries(demo_db, competition.competition_id)
         tree_ids = set(window.entry_tree.get_children())
         assert tree_ids == {str(e.entry_id) for e in expected_entries}
+    finally:
+        window.destroy()
+
+
+def test_mode_shows_competition_name_once_out_of_practice_mode(demo_db, make_main_window):
+    """User decision: out of Practice Mode, the top info bar's mode cell
+    shows the *name of the selected competition*, not the word `CONTEST`
+    -- falling back to `CONTEST` until one's picked, and back to `PRACTICE`
+    if Practice Mode is re-entered."""
+    skip_if_no_display()
+    window = make_main_window(demo_db)
+    try:
+        window._on_practice_mode_clicked()  # leave practice mode
+        assert window.mode_var.get() == "CONTEST"  # no competition picked yet
+
+        event_id = window.app_state.event.robotics_event_id
+        competition = _first_final_competition_with_entries(demo_db, event_id)
+        window.competition_class_var.set("Final")
+        window._on_competition_class_selected()
+        window.competition_tree.selection_set(str(competition.competition_id))
+        window._on_competition_selected()
+
+        assert window.mode_var.get() == competition.competition_name
+
+        window.competition_class_var.set("Heats")
+        window._on_competition_class_selected()
+        assert window.mode_var.get() == "CONTEST"  # selection cleared by the class change
+
+        window._on_practice_mode_clicked()  # back to practice
+        assert window.mode_var.get() == "PRACTICE"
     finally:
         window.destroy()
 
@@ -113,7 +145,7 @@ def test_changing_class_resets_downstream_selection(demo_db, make_main_window):
         window.competition_class_var.set("Heats")
         window._on_competition_class_selected()
 
-        assert window.selected_competition_var.get() == "Selected: --"
+        assert window.app_state.event.competition_name == ""
         assert window.selected_robot_var.get() == "Robot: --"
         assert window.current_contestant_var.get() == "Contestant: --"
         assert window.entry_tree.get_children() == ()
@@ -139,7 +171,7 @@ def test_open_database_resets_and_reloads_event_context(demo_db, make_main_windo
 
         assert window.competition_class_var.get() == ""
         assert window.competition_tree.get_children() == ()
-        assert window.selected_competition_var.get() == "Selected: --"
-        assert window.event_name_var.get() != "Event: --"
+        assert window.app_state.event.competition_name == ""
+        assert window.event_name_var.get() != main_window.NO_EVENT_TEXT
     finally:
         window.destroy()

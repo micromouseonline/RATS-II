@@ -31,16 +31,20 @@ def test_practice_mode_toggle_enables_entry_pane(demo_db, make_main_window):
     skip_if_no_display()
     window = make_main_window(demo_db)
     try:
+        assert window.mode_var.get() == "PRACTICE"
+
         window._on_practice_mode_clicked()
 
         assert window.app_state.entry.practice_mode is False
         assert str(window.competition_class_combo["state"]) == "readonly"
         assert "disabled" not in window.competition_tree.state()
         assert "disabled" not in window.entry_tree.state()
+        assert window.mode_var.get() == "CONTEST"
 
         window._on_practice_mode_clicked()
         assert window.app_state.entry.practice_mode is True
         assert str(window.competition_class_combo["state"]) == "disabled"
+        assert window.mode_var.get() == "PRACTICE"
     finally:
         window.destroy()
 

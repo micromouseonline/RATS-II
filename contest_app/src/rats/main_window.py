@@ -41,6 +41,7 @@ from rats.main_window_layout import (  # noqa: F401 -- re-exported for existing 
     COMPETITION_CLASSES,
     DEFAULT_BAUD,
     DEFAULT_WINDOW_SIZE,
+    NO_EVENT_TEXT,
     RESTORE_WINDOW_SIZE,
     THEME,
     WINDOW_TITLE,
@@ -64,14 +65,25 @@ _TIMER_STATE_TEXT = {
     5: "Run complete",
 }
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-DEFAULT_DB_PATH = REPO_ROOT / "sample_data" / "demo.db"
-
 # How often the after()-loop drains the reader thread's queue, and the most
 # items it will process in one tick (bounds how long a single Tk callback
 # can run if a burst of messages arrives at once).
 POLL_INTERVAL_MS = 50
 MAX_ITEMS_PER_TICK = 200
+
+
+def _format_event_date(raw: Optional[str]) -> str:
+    """`Context.Effective_Date` comes out of SQLite as a full timestamp
+    (e.g. `"2026-04-18 00:00:00"`) -- the top info bar only wants the date,
+    British-style (`dd/mm/yyyy`), per the user's request."""
+    if not raw:
+        return "--"
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return raw  # unrecognized format -- show it as-is rather than hide it
 
 
 def _open_db(path: Path) -> sqlite3.Connection:
@@ -106,12 +118,12 @@ class MainWindow(MainWindowLayout):
         self._open_serial_port_fn = open_serial_port_fn
 
         self.app_state = app_state if app_state is not None else AppState()
-        if conn is not None:
-            self.conn = conn
-            self._db_path = db_path
-        else:
-            self._db_path = db_path if db_path is not None else self._resolve_startup_db_path()
-            self.conn = self._open_startup_db(self._db_path)
+        # No default DB (user decision): a remembered/bundled path can point
+        # at a file that's moved or been deleted, so the app always starts
+        # with nothing open -- File -> Open Database... is required every
+        # launch. `conn`/`db_path` still exist purely for test injection.
+        self.conn = conn
+        self._db_path = db_path
         self._update_title()
 
         # Legacy's actual startup defaults (`monitor_input = 1`,
@@ -137,45 +149,44 @@ class MainWindow(MainWindowLayout):
         # practice_mode defaults True (AppState's Public_Variables parity),
         # so the entry pane starts disabled until Practice Mode is toggled
         # off -- matches legacy (Competition_Class_ComboBox_SelectedIndexChanged
-        # etc. all no-op while practice_mode is on).
-        self._set_entry_pane_enabled(not self.app_state.entry.practice_mode)
+        # etc. all no-op while practice_mode is on). Also stays disabled
+        # with no DB open regardless of practice_mode, per
+        # `_entry_pane_should_be_enabled()`.
+        self._set_entry_pane_enabled(self._entry_pane_should_be_enabled())
+        self._refresh_mode_var()
         self._refresh_watchdog_button_text()
         self._refresh_live_display()
         self._refresh_monitor_button_texts()
 
-    # -- Startup DB resolution ---------------------------------------------
-
-    def _resolve_startup_db_path(self) -> Path:
-        candidate = self._cfg.last_db_path
-        if candidate and Path(candidate).is_file():
-            return Path(candidate)
-        return DEFAULT_DB_PATH
-
-    def _open_startup_db(self, path: Path) -> sqlite3.Connection:
-        try:
-            return _open_db(path)
-        except sqlite3.Error:
-            return _open_db(DEFAULT_DB_PATH)
+    def _entry_pane_should_be_enabled(self) -> bool:
+        """Competition/entry selection needs both an open database and
+        Contest (non-practice) mode -- `.2`'s pane originally only checked
+        the latter, but that let a user leave practice mode with no DB open
+        and reach DB-writing code with `self.conn is None`."""
+        return not self.app_state.entry.practice_mode and self.conn is not None
 
     # -- Event / competition / entry selection (`APP-1.8.2`) ---------------
 
     def _load_event_context(self) -> None:
-        """`Form1_Load`'s `Context` read (`Form1.cs:2183`), minus the
-        "Stand Alone Mode" fallback -- `.1` already guarantees some DB is
-        always open, so a missing `Context` row (an unlikely but possible
-        malformed DB) just shows the placeholder text rather than a fake
-        event name."""
-        context = db.get_context(self.conn)
+        """`Form1_Load`'s `Context` read (`Form1.cs:2183`). No DB open at
+        all, or one without a `Context` row (an unlikely but possible
+        malformed DB), both show `NO_EVENT_TEXT` ("STAND ALONE", reusing
+        legacy's name for the concept as a placeholder label only) and
+        today's date -- user decision: with no database, the date shown is
+        the current system date, not a dash. Feeds the top info bar's
+        Date/Contest Name cells directly (value only, no "Event:"/"Date:"
+        prefix)."""
+        context = db.get_context(self.conn) if self.conn is not None else None
         if context is None:
             self.app_state.event.robotics_event_id = 0
             self.app_state.event.robotics_event = ""
-            self.event_name_var.set("Event: --")
-            self.event_date_var.set("Date: --")
+            self.event_name_var.set(NO_EVENT_TEXT)
+            self.event_date_var.set(datetime.now().strftime("%d/%m/%Y"))
             return
         self.app_state.event.robotics_event_id = context.current_event_id
         self.app_state.event.robotics_event = context.current_event
-        self.event_name_var.set(f"Event: {context.current_event}")
-        self.event_date_var.set(f"Date: {context.effective_date or '--'}")
+        self.event_name_var.set(context.current_event)
+        self.event_date_var.set(_format_event_date(context.effective_date))
 
     def _reset_competition_and_entry_state(self) -> None:
         """Clears everything downstream of "which DB is open" -- called
@@ -185,8 +196,15 @@ class MainWindow(MainWindowLayout):
         for item in self.competition_tree.get_children():
             self.competition_tree.delete(item)
         self._competitions_by_id.clear()
-        self.selected_competition_var.set("Selected: --")
+        self._clear_selected_competition()
         self._clear_entry_selection()
+
+    def _clear_selected_competition(self) -> None:
+        """No competition selected -- the top info bar's mode cell falls
+        back to `PRACTICE` or `CONTEST` (`_refresh_mode_var`) until a new
+        one is picked, instead of showing a stale name."""
+        self.app_state.event.competition_name = ""
+        self._refresh_mode_var()
 
     def _clear_entry_selection(self) -> None:
         for item in self.entry_tree.get_children():
@@ -200,7 +218,7 @@ class MainWindow(MainWindowLayout):
         for item in self.competition_tree.get_children():
             self.competition_tree.delete(item)
         self._competitions_by_id.clear()
-        self.selected_competition_var.set("Selected: --")
+        self._clear_selected_competition()
         self._clear_entry_selection()
 
         selected_class = self.competition_class_var.get()
@@ -224,7 +242,7 @@ class MainWindow(MainWindowLayout):
             return
 
         self.core.select_competition(competition)
-        self.selected_competition_var.set(f"Selected: {competition.competition_name}")
+        self._refresh_mode_var()
         self._clear_entry_selection()
         self._populate_entry_tree(competition.competition_id)
         self._refresh_live_display()
@@ -263,6 +281,18 @@ class MainWindow(MainWindowLayout):
         contestant = self.app_state.entry.contestant or "--"
         self.selected_robot_var.set(f"Robot: {robot}")
         self.current_contestant_var.set(f"Contestant: {contestant}")
+
+    def _refresh_mode_var(self) -> None:
+        """Top info bar's right-hand cell. User decision: it's not simply
+        `PRACTICE`/`CONTEST` -- in Practice Mode it always reads `PRACTICE`
+        (the only mode possible with no database open, per
+        `_entry_pane_should_be_enabled`); out of Practice Mode it shows the
+        *name of the currently selected competition* instead of the word
+        `CONTEST`, falling back to `CONTEST` until one's actually picked."""
+        if self.app_state.entry.practice_mode:
+            self.mode_var.set("PRACTICE")
+        else:
+            self.mode_var.set(self.app_state.event.competition_name or "CONTEST")
 
     # -- Run control + live display (`APP-1.8.3`) ---------------------------
 
@@ -339,8 +369,16 @@ class MainWindow(MainWindowLayout):
             self._populate_entry_tree(self.app_state.event.competition_id)
 
     def _on_practice_mode_clicked(self) -> None:
+        """Refuses to leave Practice Mode with no database open -- Contest
+        mode is what lets a real run reach `AppCore`'s DB writes
+        (`_on_run_time`/`dnf`), both guarded by `practice_mode` already, so
+        this is the one place that needs to guard `self.conn` too."""
+        if self.app_state.entry.practice_mode and self.conn is None:
+            messagebox.showerror("Practice Mode", "Open a database before switching to Contest mode.")
+            return
         self.core.toggle_practice_mode()
-        self._set_entry_pane_enabled(not self.app_state.entry.practice_mode)
+        self._set_entry_pane_enabled(self._entry_pane_should_be_enabled())
+        self._refresh_mode_var()
         self._update_robot_contestant_labels()
         self._refresh_live_display()
 
@@ -441,7 +479,12 @@ class MainWindow(MainWindowLayout):
 
     def _on_name_contestants_clicked(self) -> None:
         """`Name_contestants_Button_Click`, `Form1.cs:3354` (`DB-5.1`) --
-        a real one-off DB maintenance action, not a window toggle."""
+        a real one-off DB maintenance action, not a window toggle. Not
+        gated by `practice_mode` like the entry pane, so it needs its own
+        `self.conn is None` guard now that no DB opens by default."""
+        if self.conn is None:
+            messagebox.showerror("Name Contestants", "Open a database first.")
+            return
         try:
             db.backfill_contestant_names(self.conn)
         except sqlite3.Error as exc:
@@ -554,13 +597,15 @@ class MainWindow(MainWindowLayout):
         self.core.conn = new_conn
         self._db_path = path
         self._update_title()
-        old_conn.close()
+        if old_conn is not None:
+            old_conn.close()
 
         self._reset_competition_and_entry_state()
         self._load_event_context()
-
-        self._cfg.last_db_path = str(path)
-        config_module.save_config(self._cfg)
+        # Not persisted (user decision, see config.py's module docstring) --
+        # the entry pane can now actually become usable, since it also
+        # requires a database (`_entry_pane_should_be_enabled`).
+        self._set_entry_pane_enabled(self._entry_pane_should_be_enabled())
 
     # -- Lifecycle -----------------------------------------------------------
 

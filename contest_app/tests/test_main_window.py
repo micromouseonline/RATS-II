@@ -10,10 +10,27 @@ full Connect/Disconnect flow against real hardware is a manual smoke test
 import shutil
 
 from rats import main_window
-from rats.main_window import DEFAULT_WINDOW_SIZE, WINDOW_TITLE
+from rats.main_window import DEFAULT_WINDOW_SIZE, WINDOW_TITLE, _format_event_date
 
 from dbfixture import DEMO_DB
 from gui_helpers import skip_if_no_display
+
+
+def test_format_event_date_strips_time_and_uses_british_order():
+    assert _format_event_date("2026-04-18 00:00:00") == "18/04/2026"
+
+
+def test_format_event_date_handles_date_only_string():
+    assert _format_event_date("2026-04-18") == "18/04/2026"
+
+
+def test_format_event_date_handles_missing_value():
+    assert _format_event_date(None) == "--"
+    assert _format_event_date("") == "--"
+
+
+def test_format_event_date_falls_back_to_raw_on_unrecognized_format():
+    assert _format_event_date("not a date") == "not a date"
 
 
 def test_main_window_constructs_without_error(demo_db, make_main_window):
@@ -81,6 +98,94 @@ def test_title_updates_when_opening_a_new_database(demo_db, make_main_window, mo
         window._on_open_database()
 
         assert window.title() == f"{WINDOW_TITLE} - other.db"
+    finally:
+        window.destroy()
+
+
+def test_starts_with_no_database_open(make_main_window):
+    """User decision: a remembered/bundled default DB path can point at a
+    file that's moved or been deleted, so the app always starts with
+    nothing open -- File -> Open Database... is required every launch."""
+    skip_if_no_display()
+    window = make_main_window(None)
+    try:
+        assert window.conn is None
+        assert window.title() == f"{WINDOW_TITLE} - NONE"
+        assert window.event_name_var.get() == main_window.NO_EVENT_TEXT
+        assert not window._entry_pane_should_be_enabled()
+        assert str(window.competition_class_combo["state"]) == "disabled"
+    finally:
+        window.destroy()
+
+
+def test_practice_mode_cannot_be_left_without_a_database(make_main_window, monkeypatch):
+    skip_if_no_display()
+    errors = []
+    monkeypatch.setattr(
+        main_window.messagebox, "showerror", lambda title, msg: errors.append((title, msg))
+    )
+    window = make_main_window(None)
+    try:
+        window._on_practice_mode_clicked()
+
+        assert window.app_state.entry.practice_mode is True
+        assert window.mode_var.get() == "PRACTICE"
+        assert len(errors) == 1
+        assert str(window.competition_class_combo["state"]) == "disabled"
+    finally:
+        window.destroy()
+
+
+def test_opening_a_database_lets_practice_mode_be_left(make_main_window, monkeypatch, tmp_path):
+    skip_if_no_display()
+    window = make_main_window(None)
+    try:
+        other_path = tmp_path / "other.db"
+        shutil.copy(DEMO_DB, other_path)
+        monkeypatch.setattr(
+            main_window.filedialog, "askopenfilename", lambda **kwargs: str(other_path)
+        )
+        window._on_open_database()
+        assert window.conn is not None
+
+        window._on_practice_mode_clicked()
+
+        assert window.app_state.entry.practice_mode is False
+        assert str(window.competition_class_combo["state"]) == "readonly"
+    finally:
+        window.destroy()
+
+
+def test_name_contestants_requires_a_database(make_main_window, monkeypatch):
+    skip_if_no_display()
+    errors = []
+    monkeypatch.setattr(
+        main_window.messagebox, "showerror", lambda title, msg: errors.append((title, msg))
+    )
+    window = make_main_window(None)
+    try:
+        window._on_name_contestants_clicked()
+        assert errors == [("Name Contestants", "Open a database first.")]
+    finally:
+        window.destroy()
+
+
+def test_opening_database_never_persists_its_path(make_main_window, monkeypatch, tmp_path):
+    """Regression guard for the user decision to stop remembering
+    `last_db_path` -- `_on_open_database` shouldn't call `save_config` at
+    all, since nothing about the DB path is saved anymore."""
+    skip_if_no_display()
+    save_calls = []
+    monkeypatch.setattr(main_window.config_module, "save_config", save_calls.append)
+    window = make_main_window(None)
+    try:
+        other_path = tmp_path / "other.db"
+        shutil.copy(DEMO_DB, other_path)
+        monkeypatch.setattr(
+            main_window.filedialog, "askopenfilename", lambda **kwargs: str(other_path)
+        )
+        window._on_open_database()
+        assert save_calls == []
     finally:
         window.destroy()
 
