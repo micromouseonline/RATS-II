@@ -50,6 +50,30 @@ by people who aren't Access/VBA specialists.
   is real, since it's already public via published contest results). Safe
   to commit and share; both apps default to opening it.
 
+## Getting Started
+
+### Prerequisites
+
+- Python 3.10 or later
+- pip
+
+### Installation and Running
+
+A helper script `run.sh` is provided for common tasks:
+
+```bash
+# Install dependencies
+./run.sh install
+
+# Run the contest app
+./run.sh app
+
+# Run the test suite
+./run.sh test
+```
+
+Alternatively, see the [contest_app](contest_app/) directory for direct Python module invocation.
+
 ## Status
 
 Early stage. The legacy system has been fully analyzed and documented, and
