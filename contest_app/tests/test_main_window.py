@@ -4,8 +4,9 @@ Pure-layout construction (widget presence, window geometry, port/baud
 enumeration, stub handlers) is tested against `MainWindowLayout` directly
 in test_main_window_layout.py -- it has no DB/AppCore/serial dependency at
 all. This file covers `MainWindow`-specific (business-logic) behavior: the
-full Connect/Disconnect flow against real hardware is a manual smoke test
-(see the checklist shipped with each stage) -- not exercised here.
+connect switch is exercised against a fake transport; the full
+Connect/Disconnect flow against real hardware is a manual smoke test (see
+the checklist shipped with each stage).
 """
 import shutil
 
@@ -13,6 +14,7 @@ from rats import main_window
 from rats.main_window import DEFAULT_WINDOW_SIZE, WINDOW_TITLE, _format_event_date
 
 from dbfixture import DEMO_DB
+from fake_serial import FakeSerialTransport
 from gui_helpers import skip_if_no_display
 
 
@@ -40,7 +42,7 @@ def test_main_window_constructs_without_error(demo_db, make_main_window):
         window.update_idletasks()
 
         assert str(window.port_combo) != ""
-        assert window.connect_button["text"] == "Connect"
+        assert window.connect_switch["text"] == "OFF"
         assert str(window.monitor_text) != ""
         assert str(window.competition_tree) != ""
         assert str(window.entry_tree) != ""
@@ -58,8 +60,8 @@ def test_main_window_child_windows_not_built_yet(demo_db, make_main_window):
     skip_if_no_display()
     window = make_main_window(demo_db)
     try:
-        assert str(window.calibrate_button["state"]) == "normal"
-        assert str(window.monitor_toggle_button["state"]) == "normal"
+        assert not window.calibrate_mode_radio.instate(("disabled",))
+        assert not window.run_order_button.instate(("disabled",))
     finally:
         window.destroy()
 
@@ -205,3 +207,70 @@ def test_window_size_is_saved_on_close(demo_db, make_main_window, monkeypatch):
 
     width, height = DEFAULT_WINDOW_SIZE
     assert saved == {"width": width, "height": height}
+
+
+def test_connect_switch_turns_on_and_locks_port_and_baud(demo_db, make_main_window):
+    """Driven through `invoke()`, a real click: the switch flips its own
+    variable first, then `_on_connect_clicked` runs."""
+    skip_if_no_display()
+    window = make_main_window(demo_db, open_serial_port_fn=lambda port, baud: FakeSerialTransport())
+    try:
+        window.port_var.set("FAKE0")
+
+        window.connect_switch.invoke()
+        assert window.app_state.connection.serial_port_opened is True
+        assert window.connect_var.get() is True
+        assert window.connect_switch["text"] == "ON"
+        assert str(window.port_combo["state"]) == "disabled"
+        assert window._connection_menu.entrycget("Baud", "state") == "disabled"
+
+        window.connect_switch.invoke()
+        assert window.app_state.connection.serial_port_opened is False
+        assert window.connect_var.get() is False
+        assert window.connect_switch["text"] == "OFF"
+        assert str(window.port_combo["state"]) == "readonly"
+        assert window._connection_menu.entrycget("Baud", "state") == "normal"
+    finally:
+        window.destroy()
+
+
+def test_connect_switch_returns_to_off_when_the_port_fails_to_open(
+    demo_db, make_main_window, monkeypatch
+):
+    skip_if_no_display()
+    errors = []
+    monkeypatch.setattr(
+        main_window.messagebox, "showerror", lambda title, msg: errors.append((title, msg))
+    )
+
+    def failing_open(port, baud):
+        raise OSError("no such port")
+
+    window = make_main_window(demo_db, open_serial_port_fn=failing_open)
+    try:
+        window.port_var.set("FAKE0")
+        window.connect_switch.invoke()
+
+        assert len(errors) == 1
+        assert window.connect_var.get() is False
+        assert window.connect_switch["text"] == "OFF"
+        assert str(window.port_combo["state"]) == "readonly"
+    finally:
+        window.destroy()
+
+
+def test_connect_switch_returns_to_off_with_no_port_selected(make_main_window, monkeypatch):
+    skip_if_no_display()
+    errors = []
+    monkeypatch.setattr(
+        main_window.messagebox, "showerror", lambda title, msg: errors.append((title, msg))
+    )
+    window = make_main_window(None)
+    try:
+        window.port_var.set("")
+        window.connect_switch.invoke()
+
+        assert len(errors) == 1
+        assert window.connect_var.get() is False
+    finally:
+        window.destroy()

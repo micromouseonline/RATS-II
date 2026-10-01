@@ -14,6 +14,8 @@ from rats.main_window_layout import (
     BAUD_RATES,
     DEFAULT_BAUD,
     DEFAULT_WINDOW_SIZE,
+    GATE_MODE_CALIBRATE,
+    GATE_MODE_TIMER,
     NO_EVENT_TEXT,
     RESTORE_WINDOW_SIZE,
     MainWindowLayout,
@@ -40,7 +42,7 @@ _STUB_HANDLERS = [
     "_on_watchdog_clicked",
     "_on_monitor_toggle_clicked",
     "_on_verbose_toggle_clicked",
-    "_on_calibrate_clicked",
+    "_on_gate_mode_selected",
     "_on_run_order_clicked",
     "_on_display_clicked",
     "_on_results_clicked",
@@ -81,7 +83,7 @@ def test_constructs_without_error():
     try:
         window.update_idletasks()
         assert str(window.port_combo) != ""
-        assert window.connect_button["text"] == "Connect"
+        assert window.connect_switch["text"] == "OFF"
         assert str(window.monitor_text) != ""
         assert str(window.competition_tree) != ""
         assert str(window.entry_tree) != ""
@@ -104,8 +106,9 @@ def test_every_stub_handler_is_callable_and_harmless():
         window.destroy()
 
 
-def test_default_window_size_matches_legacy_client_size():
-    """Legacy Form1's designed ClientSize, `Form1.cs:2092`."""
+def test_default_window_size_matches_layout_drawing():
+    """The user's `APP-1.8.5` layout drawing's size, not legacy Form1's."""
+    assert DEFAULT_WINDOW_SIZE == (960, 577)
     skip_if_no_display()
     window = MainWindowLayout(cfg=AppConfig())
     try:
@@ -115,20 +118,89 @@ def test_default_window_size_matches_legacy_client_size():
         window.destroy()
 
 
-def test_panes_start_at_configured_ratios():
-    """Panes no longer split into equal thirds (user decision) -- the
-    left/right sash positions are a fixed 260:220:320 ratio (out of 800)
-    of the window's actual width, set in `_apply_startup_geometry`."""
+def test_body_columns_keep_the_drawings_proportions():
+    """The log / lists / buttons columns are a plain grid (no sashes) whose
+    widths stay in the drawing's 29:26:35 ratio whatever the content."""
     skip_if_no_display()
     window = MainWindowLayout(cfg=AppConfig())
     try:
         window.update_idletasks()
-        total_width = window._paned.winfo_width()
-        expected_left = total_width * 260 // 800
-        expected_right = total_width * 480 // 800
+        widths = [window._body.grid_bbox(column, 2)[2] for column in range(3)]
+        assert widths[2] > widths[0] > widths[1] > 0
 
-        assert window._paned.sashpos(0) == expected_left
-        assert window._paned.sashpos(1) == expected_right
+        # Each column's main widget really is in that column, left to right.
+        xs = [
+            widget.winfo_rootx()
+            for widget in (window.monitor_text, window.entry_tree, window.touch_button)
+        ]
+        assert xs == sorted(xs)
+    finally:
+        window.destroy()
+
+
+def test_connect_switch_caption_follows_its_variable():
+    skip_if_no_display()
+    window = MainWindowLayout(cfg=AppConfig())
+    try:
+        window.connect_var.set(True)
+        assert window.connect_switch["text"] == "ON"
+        window.connect_var.set(False)
+        assert window.connect_switch["text"] == "OFF"
+    finally:
+        window.destroy()
+
+
+def test_status_bar_toggles_start_at_their_defaults():
+    """Timer/Calibrate share one variable (a mutually exclusive pair);
+    Watchdog starts on and Verbose off, matching `AppState`/legacy."""
+    skip_if_no_display()
+    window = MainWindowLayout(cfg=AppConfig())
+    try:
+        assert window.gate_mode_var.get() == GATE_MODE_TIMER
+        window.calibrate_mode_radio.invoke()
+        assert window.gate_mode_var.get() == GATE_MODE_CALIBRATE
+        window.timer_mode_radio.invoke()
+        assert window.gate_mode_var.get() == GATE_MODE_TIMER
+
+        assert window.watchdog_var.get() is True
+        assert window.verbose_var.get() is False
+        assert window.monitor_var.get() is True
+    finally:
+        window.destroy()
+
+
+def test_spare_display_button_is_inert():
+    skip_if_no_display()
+    window = MainWindowLayout(cfg=AppConfig())
+    try:
+        assert window.spare_display_button.instate(("disabled",))
+    finally:
+        window.destroy()
+
+
+def test_connection_controls_lock_and_unlock_together():
+    skip_if_no_display()
+    window = MainWindowLayout(cfg=AppConfig())
+    try:
+        window._set_connection_controls_enabled(False)
+        assert str(window.port_combo["state"]) == "disabled"
+        assert window._connection_menu.entrycget("Baud", "state") == "disabled"
+        window._set_connection_controls_enabled(True)
+        assert str(window.port_combo["state"]) == "readonly"
+        assert window._connection_menu.entrycget("Baud", "state") == "normal"
+    finally:
+        window.destroy()
+
+
+def test_scoring_model_dialog_opens_once():
+    skip_if_no_display()
+    window = MainWindowLayout(cfg=AppConfig())
+    try:
+        window._show_scoring_dialog()
+        first = window._scoring_dialog
+        window._show_scoring_dialog()
+        assert window._scoring_dialog is first
+        assert first.winfo_exists()
     finally:
         window.destroy()
 

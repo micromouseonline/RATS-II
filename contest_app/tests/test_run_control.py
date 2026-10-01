@@ -85,25 +85,26 @@ def test_extra_run_button_decrements_runs_used(demo_db, make_main_window):
         window.app_state.run.no_of_runs_used = 2
         window._on_extra_run_clicked()
         assert window.app_state.run.no_of_runs_used == 1
-        assert window.run_number_var.get() == "1"
+        assert window.run_count_var.get() == f"1/{window.app_state.run.no_of_runs_allowed}"
     finally:
         window.destroy()
 
 
-def test_watchdog_button_toggles_state_and_caption(demo_db, make_main_window):
+def test_watchdog_toggle_follows_state(demo_db, make_main_window):
     skip_if_no_display()
     window = make_main_window(demo_db)
     try:
         assert window.app_state.watchdog.watchdog_active is True
-        assert window.watchdog_button["text"] == "WatchDog is On"
+        assert window.watchdog_var.get() is True
 
-        window._on_watchdog_clicked()
+        # A real click: the checkbox flips its own variable, then the handler runs.
+        window.watchdog_check.invoke()
         assert window.app_state.watchdog.watchdog_active is False
-        assert window.watchdog_button["text"] == "WatchDog is Off"
+        assert window.watchdog_var.get() is False
 
-        window._on_watchdog_clicked()
+        window.watchdog_check.invoke()
         assert window.app_state.watchdog.watchdog_active is True
-        assert window.watchdog_button["text"] == "WatchDog is On"
+        assert window.watchdog_var.get() is True
     finally:
         window.destroy()
 
@@ -242,8 +243,7 @@ def test_refresh_live_display_formats_values_from_state(demo_db, make_main_windo
         assert window.best_score_var.get() == "2.500"
         assert window.rank_var.get() == "3"
         assert window.time_left_var.get() == "59.99"
-        assert window.run_number_var.get() == "2"
-        assert window.allowed_runs_var.get() == "5"
+        assert window.run_count_var.get() == "2/5"
         assert window.touches_var.get() == "4"
         assert window.timer_state_var.get() == "4 - Run in progress"
         assert window.watchdog_state_var.get() == ""

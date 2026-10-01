@@ -115,30 +115,30 @@ def test_verbose_adds_raw_suffix_on_screen_only(demo_db, make_main_window):
         window.destroy()
 
 
-def test_monitor_toggle_button_caption(demo_db, make_main_window):
+def test_monitor_toggle_follows_state(demo_db, make_main_window):
     skip_if_no_display()
     window = make_main_window(demo_db)
     try:
         assert window._monitor_on is True
-        assert window.monitor_toggle_button["text"] == "NoMonitor"
+        assert window.monitor_var.get() is True
 
         window._on_monitor_toggle_clicked()
         assert window._monitor_on is False
-        assert window.monitor_toggle_button["text"] == "Monitor"
+        assert window.monitor_var.get() is False
     finally:
         window.destroy()
 
 
-def test_verbose_toggle_button_caption(demo_db, make_main_window):
+def test_verbose_toggle_follows_state(demo_db, make_main_window):
     skip_if_no_display()
     window = make_main_window(demo_db)
     try:
         assert window._verbose_on is False
-        assert window.verbose_toggle_button["text"] == "Verbose"
+        assert window.verbose_var.get() is False
 
         window._on_verbose_toggle_clicked()
         assert window._verbose_on is True
-        assert window.verbose_toggle_button["text"] == "Concise"
+        assert window.verbose_var.get() is True
     finally:
         window.destroy()
 
@@ -216,7 +216,11 @@ def test_calibrate_run_order_results_toggle_their_own_flags(demo_db, make_main_w
     skip_if_no_display()
     window = make_main_window(demo_db)
     try:
-        window._on_calibrate_clicked()
+        window.calibrate_mode_radio.invoke()
+        assert window.app_state.windows.calibration_window_open is True
+        window.timer_mode_radio.invoke()
+        assert window.app_state.windows.calibration_window_open is False
+        window.calibrate_mode_radio.invoke()
         assert window.app_state.windows.calibration_window_open is True
 
         window._on_run_order_clicked()

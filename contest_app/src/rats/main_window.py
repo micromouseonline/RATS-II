@@ -7,13 +7,14 @@ convention set for `APP-1.8`-`.12`, `plans/app-1-8-main-window-layout.md`)
 with every handler stubbed to a no-op. This class overrides each stub with
 its real behavior and adds the business-logic setup the layout has no
 knowledge of: opening the DB, opening the log files, and constructing
-`AppCore`. `.1` activated the connection toolbar (COM port/baud,
-Connect/Disconnect) and DB file selection; `.2` activated the
-event/competition/entry selection pane; `.3` activated the run-control
+`AppCore`. `.1` activated the connection controls (COM port/baud, the
+connect switch) and DB file selection; `.2` activated the
+event/competition/entry selection lists; `.3` activated the run-control
 buttons and live display, plus the periodic local-time interpolation
 (`AppCore.tick()`); `.4` activated the monitor/log files and the
 child-window launch buttons -- `APP-1.9`-`.12` build the child windows
-themselves.
+themselves. `.5` re-arranged all of it to the user's layout drawing
+(`main_window_layout.py`) without changing any of that behavior.
 
 See `main_window_layout.py`'s module docstring for why the split exists:
 that module alone is fully constructible and clickable with no database or
@@ -41,6 +42,7 @@ from rats.main_window_layout import (  # noqa: F401 -- re-exported for existing 
     COMPETITION_CLASSES,
     DEFAULT_BAUD,
     DEFAULT_WINDOW_SIZE,
+    GATE_MODE_CALIBRATE,
     NO_EVENT_TEXT,
     RESTORE_WINDOW_SIZE,
     THEME,
@@ -154,9 +156,9 @@ class MainWindow(MainWindowLayout):
         # `_entry_pane_should_be_enabled()`.
         self._set_entry_pane_enabled(self._entry_pane_should_be_enabled())
         self._refresh_mode_var()
-        self._refresh_watchdog_button_text()
+        self._refresh_watchdog_toggle()
         self._refresh_live_display()
-        self._refresh_monitor_button_texts()
+        self._refresh_monitor_toggles()
 
     def _entry_pane_should_be_enabled(self) -> bool:
         """Competition/entry selection needs both an open database and
@@ -317,8 +319,7 @@ class MainWindow(MainWindowLayout):
         )
         self.rank_var.set(str(run.robot_rank))
         self.time_left_var.set(f"{run.time_left_ms / 1000:.2f}")
-        self.run_number_var.set(str(run.no_of_runs_used))
-        self.allowed_runs_var.set(str(run.no_of_runs_allowed))
+        self.run_count_var.set(f"{run.no_of_runs_used}/{run.no_of_runs_allowed}")
         self.touches_var.set(str(run.no_of_touches))
         self.watchdog_state_var.set("Error" if watchdog.watchdog_alarm else "")
         state_text = _TIMER_STATE_TEXT.get(run.timing_gates_state, "Undefined state")
@@ -330,9 +331,11 @@ class MainWindow(MainWindowLayout):
         self.touch_cumulative_cfg_var.set("yes" if scoring.touches_cumulative else "no")
         self.touch_enabled_cfg_var.set("yes" if scoring.touches_enabled else "no")
 
-    def _refresh_watchdog_button_text(self) -> None:
-        active = self.app_state.watchdog.watchdog_active
-        self.watchdog_button.configure(text="WatchDog is On" if active else "WatchDog is Off")
+    def _refresh_watchdog_toggle(self) -> None:
+        """Status bar's Watchdog checkbox -- always set from `AppState`
+        rather than trusted, since a click flips the checkbox's own
+        variable before `_on_watchdog_clicked` runs."""
+        self.watchdog_var.set(self.app_state.watchdog.watchdog_active)
 
     def _on_touch_clicked(self) -> None:
         self.core.touch()
@@ -388,7 +391,7 @@ class MainWindow(MainWindowLayout):
 
     def _on_watchdog_clicked(self) -> None:
         self.core.toggle_watchdog()
-        self._refresh_watchdog_button_text()
+        self._refresh_watchdog_toggle()
         self._refresh_live_display()
 
     # -- Monitor + log files (`APP-1.8.4`) -----------------------------------
@@ -445,23 +448,29 @@ class MainWindow(MainWindowLayout):
             if self._monitor_on:
                 self._append_monitor_line(line)
 
-    def _refresh_monitor_button_texts(self) -> None:
-        self.monitor_toggle_button.configure(text="NoMonitor" if self._monitor_on else "Monitor")
-        self.verbose_toggle_button.configure(text="Concise" if self._verbose_on else "Verbose")
+    def _refresh_monitor_toggles(self) -> None:
+        """Tools -> "Show serial traffic in log" and the status bar's
+        Verbose checkbox, set from the real flags (same reasoning as
+        `_refresh_watchdog_toggle`)."""
+        self.monitor_var.set(self._monitor_on)
+        self.verbose_var.set(self._verbose_on)
 
     def _on_monitor_toggle_clicked(self) -> None:
         self._monitor_on = not self._monitor_on
-        self._refresh_monitor_button_texts()
+        self._refresh_monitor_toggles()
 
     def _on_verbose_toggle_clicked(self) -> None:
         self._verbose_on = not self._verbose_on
-        self._refresh_monitor_button_texts()
+        self._refresh_monitor_toggles()
 
     # -- Child-window launch buttons (`APP-1.8.4`) ---------------------------
 
-    def _on_calibrate_clicked(self) -> None:
+    def _on_gate_mode_selected(self) -> None:
+        """Status bar's Timer/Calibrate pair. Sets the same flag the old
+        Calibrate button toggled -- the calibration window itself, and the
+        `<99,CALIBRATION>`/`<99,TIMER>` sends that go with it, are `APP-1.9`."""
         w = self.app_state.windows
-        w.calibration_window_open = not w.calibration_window_open
+        w.calibration_window_open = self.gate_mode_var.get() == GATE_MODE_CALIBRATE
 
     def _on_run_order_clicked(self) -> None:
         w = self.app_state.windows
@@ -497,6 +506,9 @@ class MainWindow(MainWindowLayout):
             self._disconnect()
         else:
             self._connect()
+        # The switch flips its own variable on click, before this runs --
+        # put it back to the truth, so a failed connect shows OFF again.
+        self.connect_var.set(self._reader is not None)
 
     def _connect(self) -> None:
         port_name = self.port_var.get()
@@ -520,9 +532,8 @@ class MainWindow(MainWindowLayout):
         self.core.transport = transport
         self.app_state.connection.serial_port_opened = True
 
-        self.port_combo.configure(state="disabled")
-        self.baud_combo.configure(state="disabled")
-        self.connect_button.configure(text="Disconnect")
+        self._set_connection_controls_enabled(False)
+        self.connect_var.set(True)
 
         self._cfg.last_port = port_name
         self._cfg.last_baud = baud
@@ -542,9 +553,8 @@ class MainWindow(MainWindowLayout):
         self.core.transport = None
         self.app_state.connection.serial_port_opened = False
 
-        self.port_combo.configure(state="readonly")
-        self.baud_combo.configure(state="readonly")
-        self.connect_button.configure(text="Connect")
+        self._set_connection_controls_enabled(True)
+        self.connect_var.set(False)
 
     def _drain_tick(self) -> None:
         """The `after()`-driven queue-drain loop. Also drives

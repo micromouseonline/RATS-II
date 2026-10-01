@@ -4,11 +4,12 @@ dependency at all.
 Split out of `main_window.py` so the entire visual layout can be built and
 clicked in isolation, without a database, hardware, or any of the app's
 real behavior wired up -- useful for iterating on layout/spacing (e.g.
-`APP-1.8.5`'s review against `legacy/legacy-rats-screen.png`) without
-needing to relaunch the full app each time.
+`APP-1.8.5`'s layout review) without needing to relaunch the full app each
+time.
 
-`MainWindowLayout` builds every widget from `APP-1.8.1`-`.4` and wires each
-button/selection to a same-named handler method -- but every handler here
+`MainWindowLayout` builds every widget from `APP-1.8.1`-`.4`, arranged per
+the user's own layout drawing (`APP-1.8.5`, `tmp/rats-II-layout.drawio.png`),
+and wires each button/selection to a same-named handler method -- but every handler here
 is a harmless `pass` stub, so the class is fully constructible and
 interactive on its own (see `main()` below). `rats.main_window.MainWindow`
 subclasses this and overrides every stub with its real implementation;
@@ -33,14 +34,14 @@ from rats.config import AppConfig
 
 # UI-2: sv_ttk's light theme, chosen over stock ttk after the user compared
 # both sv_ttk variants live against this window -- "an improvement", light
-# preferred "for now". A known cost, not yet fixed: sv_ttk's wider button
-# padding clips several run-control captions in their current pane width
-# ("Clear Display" -> "Cle", etc.) -- left for APP-1.8.5's layout pass.
+# preferred "for now".
 THEME = "light"
 
 WINDOW_TITLE = "RATS Contest Timing"
-# Legacy Form1's designed size (`Form1.cs:2092`, `ClientSize = new Size(884, 522)`).
-DEFAULT_WINDOW_SIZE = (884, 522)
+# The user's layout drawing's size (`APP-1.8.5`,
+# `tmp/rats-II-layout.drawio.png`) -- replaces legacy Form1's 884x522
+# `ClientSize`, which the redesigned layout no longer follows.
+DEFAULT_WINDOW_SIZE = (960, 577)
 
 # The window size is already saved to the config file on every close
 # (`MainWindow.destroy`) so the data is being collected, but reopening at
@@ -59,22 +60,64 @@ DEFAULT_BAUD = config_module.DEFAULT_BAUD
 # "Playoff" class, unreachable via this dropdown in the legacy app too.
 COMPETITION_CLASSES = ["Final", "Heats"]
 
-# User-requested top info bar (date/contest name/mode): large, blue, no
-# field-name prefixes -- a scoreboard-style banner, not a form label.
-_INFO_BAR_FONT = ("TkDefaultFont", 16, "bold")
-_INFO_BAR_COLOR = "blue"
 # Shown until a real Context row is loaded (no DB open, or one without a
 # Context table row) -- reuses legacy's "Stand Alone Mode" name (Q-4) as
 # just a placeholder label now, not a functional degraded mode.
 NO_EVENT_TEXT = "STAND ALONE"
 
-# User-requested entry bar (selected Robot/Contestant), below the info bar:
-# same font size as the info bar. Field name ("Robot:"/"Contestant:") and
-# its value are colored differently -- user decision -- so each is its own
-# Label rather than one Label per field like the info bar's.
-_ENTRY_BAR_FONT = ("TkDefaultFont", 16, "bold")
-_ENTRY_BAR_LABEL_COLOR = "black"
-_ENTRY_BAR_VALUE_COLOR = "blue"
+# Colours from the user's layout drawing (drawio's stock palette). The two
+# lavender bands are the top info bar and the bottom status bar; everything
+# between sits on the cream body. sv_ttk's button/switch sprites have
+# transparent corners, so they blend onto either (checked before building).
+_BAND_COLOR = "#e1d5e7"
+_BODY_COLOR = "#f9f7ed"
+_NAME_COLOR = "#cc0000"
+_TILE_CAPTION_COLOR = "#eeeeee"
+_TILE_VALUE_COLOR = "#ffffff"
+_CONTEST_SELECT_COLOR = "#b0e3e6"
+_ENTRY_SELECT_COLOR = "#d5e8d4"
+_ALARM_COLOR = "#cc0000"
+
+_INFO_BAR_FONT = ("TkDefaultFont", 14, "bold")
+_NAME_ROW_FONT = ("TkDefaultFont", 14, "bold")
+_TILE_CAPTION_FONT = ("TkDefaultFont", 12, "bold")
+_TILE_VALUE_FONT = ("TkDefaultFont", 13)
+_RUN_BUTTON_FONT = ("TkDefaultFont", 12, "bold")
+_DISPLAY_BUTTON_FONT = ("TkDefaultFont", 10, "bold")
+_STATUS_BAR_FONT = ("TkDefaultFont", 12)
+
+# The drawing's three body columns (log / lists / buttons) are roughly
+# 290 : 257 : 353 px of its 960 -- kept as grid weights in a `uniform`
+# group, so the proportions hold at any window size.
+_BODY_COLUMN_WEIGHTS = (29, 26, 35)
+# Tighter than sv_ttk's default rows, so the drawing's seven entries fit
+# the ENTRY list at the default window size without scrolling.
+_LIST_ROW_HEIGHT = 20
+_BODY_SIDE_PAD = 16
+_BODY_COLUMN_GAP = 15
+
+# The live-value tiles, one tuple per body column: (caption, StringVar
+# attribute, relative width). Captions are the drawing's; the attributes
+# are the same `APP-1.8.3` live-display variables as before ("Course Time"
+# is `maze_time`, "Last Run"/"Last Score" are `run_time`/`score_time`) --
+# except "Run", which now shows used/allowed in one tile ("3/5").
+_TILE_SPECS = (
+    (("Course Time", "maze_time_var", 7), ("Remaining", "time_left_var", 6), ("Run", "run_count_var", 3)),
+    (("Touch", "touches_var", 4), ("Best Score", "best_score_var", 7), ("Rank", "rank_var", 3)),
+    (("Last Run", "run_time_var", 1), ("Last Score", "score_time_var", 1), ("Split Time", "split_time_var", 1)),
+)
+
+# Not on the main window in the drawing -- shown by Tools -> Scoring Model...
+_SCORING_SPECS = (
+    ("Touch time", "touch_time_cfg_var"),
+    ("Touch divider", "touch_divider_cfg_var"),
+    ("Maze divider", "maze_divider_cfg_var"),
+    ("Cumulative", "touch_cumulative_cfg_var"),
+    ("Enabled", "touch_enabled_cfg_var"),
+)
+
+GATE_MODE_TIMER = "timer"
+GATE_MODE_CALIBRATE = "calibrate"
 
 
 def list_available_ports() -> list[str]:
@@ -91,10 +134,18 @@ class MainWindowLayout(tk.Tk):
     def __init__(self, *, cfg: Optional[AppConfig] = None):
         super().__init__()
         sv_ttk.set_theme(THEME)
+        self._configure_styles()
 
         self._cfg = cfg if cfg is not None else config_module.load_config()
         self._db_path: Optional[Path] = None
         self._update_title()
+
+        self._scoring_dialog: Optional[tk.Toplevel] = None
+        self.baud_var = tk.IntVar(value=self._cfg.last_baud or DEFAULT_BAUD)
+        # Legacy's startup default (`monitor_input = 1`, `Form1`'s constructor).
+        self.monitor_var = tk.BooleanVar(value=True)
+        for _, attr in _SCORING_SPECS:
+            setattr(self, attr, tk.StringVar(value="--"))
 
         self._build_menu()
         self._build_layout()
@@ -109,307 +160,328 @@ class MainWindowLayout(tk.Tk):
             width, height = self._cfg.last_window_width, self._cfg.last_window_height
         self.geometry(f"{width}x{height}")
 
-        # Split the three panes into equal thirds up front -- PanedWindow's
-        # `weight` only governs how *extra* space is redistributed on a
-        # later resize, not each pane's initial width, so the sashes need
-        # setting explicitly once the window's actual width is known.
-        self.update_idletasks()
-        total_width = self._paned.winfo_width() or width
-        left_sash_pos = total_width * 260 // 800
-        right_sash_pos = total_width * 480 // 800
-        self._paned.sashpos(0, left_sash_pos)
-        self._paned.sashpos(1, right_sash_pos)
-
     def _update_title(self) -> None:
         db_name = self._db_path.name if self._db_path is not None else "NONE"
         self.title(f"{WINDOW_TITLE} - {db_name}")
 
+    # -- Styles -----------------------------------------------------------
+
+    def _configure_styles(self) -> None:
+        """Everything the drawing needs beyond stock sv_ttk: the cream body
+        (root style background, inherited by every ttk widget), the two
+        lavender bands, bold run-control buttons on sv_ttk's own
+        `Accent.TButton` (user decision: stock accent blue, no custom
+        button images), and a selection colour per list."""
+        style = ttk.Style(self)
+        style.configure(".", background=_BODY_COLOR)
+        self.configure(background=_BODY_COLOR)
+
+        style.configure("Band.TFrame", background=_BAND_COLOR)
+        style.configure("Band.TCheckbutton", background=_BAND_COLOR, font=_STATUS_BAR_FONT)
+        style.configure("Band.TRadiobutton", background=_BAND_COLOR, font=_STATUS_BAR_FONT)
+
+        style.configure("Run.Accent.TButton", font=_RUN_BUTTON_FONT)
+        style.configure("Display.Accent.TButton", font=_DISPLAY_BUTTON_FONT)
+
+        for name, color in (
+            ("Contest.Treeview", _CONTEST_SELECT_COLOR),
+            ("Entry.Treeview", _ENTRY_SELECT_COLOR),
+        ):
+            style.configure(name, rowheight=_LIST_ROW_HEIGHT)
+            style.map(name, background=[("selected", color)], foreground=[("selected", "#191919")])
+
     # -- Layout -----------------------------------------------------------
 
     def _build_menu(self) -> None:
+        """File / Connection / Tools. The last two hold the controls the
+        drawing leaves off the main window (user decision: menus + status
+        bar rather than dropping them): baud rate, log clear, the on-screen
+        monitor toggle, Name Contestants and the scoring-model readout."""
         menubar = tk.Menu(self)
+
         file_menu = tk.Menu(menubar, tearoff=False)
         file_menu.add_command(label="Open Database…", command=self._on_open_database)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.destroy)
         menubar.add_cascade(label="File", menu=file_menu)
+
+        self._connection_menu = tk.Menu(menubar, tearoff=False)
+        baud_menu = tk.Menu(self._connection_menu, tearoff=False)
+        for rate in BAUD_RATES:
+            baud_menu.add_radiobutton(label=str(rate), variable=self.baud_var, value=rate)
+        self._connection_menu.add_cascade(label="Baud", menu=baud_menu)
+        menubar.add_cascade(label="Connection", menu=self._connection_menu)
+
+        tools_menu = tk.Menu(menubar, tearoff=False)
+        tools_menu.add_command(label="Clear Log", command=self._on_monitor_clear_clicked)
+        tools_menu.add_checkbutton(
+            label="Show serial traffic in log",
+            variable=self.monitor_var,
+            command=self._on_monitor_toggle_clicked,
+        )
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Name Contestants…", command=self._on_name_contestants_clicked)
+        tools_menu.add_command(label="Scoring Model…", command=self._show_scoring_dialog)
+        menubar.add_cascade(label="Tools", menu=tools_menu)
+
         self.config(menu=menubar)
 
     def _build_layout(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(3, weight=1)
+        self.rowconfigure(2, weight=1)
 
-        self._build_toolbar()
         self._build_info_bar()
-        self._build_entry_bar()
-
-        paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        paned.grid(row=3, column=0, sticky="nsew")
-        self._paned = paned
-
-        self._build_entry_pane(paned)
-        self._build_run_pane(paned)
-        self._build_monitor_pane(paned)
-
-    def _build_toolbar(self) -> None:
-        toolbar = ttk.Frame(self, padding=4)
-        toolbar.grid(row=0, column=0, sticky="ew")
-
-        ttk.Label(toolbar, text="Port:").grid(row=0, column=0, padx=(0, 4))
-        self.port_var = tk.StringVar()
-        self.port_combo = ttk.Combobox(
-            toolbar, textvariable=self.port_var, state="readonly", width=14
-        )
-        self.port_combo.grid(row=0, column=1, padx=(0, 8))
-
-        ttk.Label(toolbar, text="Baud:").grid(row=0, column=2, padx=(0, 4))
-        self.baud_var = tk.IntVar(value=self._cfg.last_baud or DEFAULT_BAUD)
-        self.baud_combo = ttk.Combobox(
-            toolbar,
-            textvariable=self.baud_var,
-            state="readonly",
-            width=8,
-            values=BAUD_RATES,
-        )
-        self.baud_combo.grid(row=0, column=3, padx=(0, 8))
-
-        self.connect_button = ttk.Button(
-            toolbar, text="Connect", command=self._on_connect_clicked
-        )
-        self.connect_button.grid(row=0, column=4, padx=(0, 12))
+        self._build_name_row()
+        self._build_body()
+        self._build_status_bar()
 
     def _build_info_bar(self) -> None:
-        """User-requested top info row: Date (left, value only), Contest
-        Name (centre, name only), Mode (right, `PRACTICE`/`CONTEST`) --
-        replaces the small Event/Date labels that used to live in the
-        entry pane, so this is the one place that information now lives."""
-        bar = ttk.Frame(self, padding=4)
-        bar.grid(row=1, column=0, sticky="ew")
-        bar.columnconfigure(0, weight=1)
-        bar.columnconfigure(1, weight=1)
-        bar.columnconfigure(2, weight=1)
+        """Top band: Date (left, value only), Contest Name (centre, name
+        only), Mode (right, `PRACTICE` or the selected competition's name)
+        -- a scoreboard-style banner, not a form, so no field captions."""
+        bar = ttk.Frame(self, style="Band.TFrame", padding=(_BODY_SIDE_PAD, 4))
+        bar.grid(row=0, column=0, sticky="ew")
+        for column in range(3):
+            bar.columnconfigure(column, weight=1)
 
         # With no database open (this class's permanent state), the date
         # shown is today's date -- user decision, `main_window.py`'s
         # `_load_event_context` does the same for the real subclass.
         self.event_date_var = tk.StringVar(value=datetime.now().strftime("%d/%m/%Y"))
-        ttk.Label(
-            bar,
-            textvariable=self.event_date_var,
-            font=_INFO_BAR_FONT,
-            foreground=_INFO_BAR_COLOR,
-            anchor="w",
-        ).grid(row=0, column=0, sticky="w")
-
         self.event_name_var = tk.StringVar(value=NO_EVENT_TEXT)
-        ttk.Label(
-            bar,
-            textvariable=self.event_name_var,
-            font=_INFO_BAR_FONT,
-            foreground=_INFO_BAR_COLOR,
-            anchor="center",
-        ).grid(row=0, column=1, sticky="ew")
-
         self.mode_var = tk.StringVar(value="PRACTICE")
-        ttk.Label(
-            bar,
-            textvariable=self.mode_var,
-            font=_INFO_BAR_FONT,
-            foreground=_INFO_BAR_COLOR,
-            anchor="e",
-        ).grid(row=0, column=2, sticky="e")
+        for column, (var, sticky) in enumerate(
+            ((self.event_date_var, "w"), (self.event_name_var, ""), (self.mode_var, "e"))
+        ):
+            ttk.Label(bar, textvariable=var, background=_BAND_COLOR, font=_INFO_BAR_FONT).grid(
+                row=0, column=column, sticky=sticky
+            )
 
-    def _build_entry_bar(self) -> None:
-        """User-requested entry bar: selected Robot and Contestant, on one
-        row below the info bar (same font size as the info bar) -- moved
-        here from the entry pane so both fields sit together at full
-        window width instead of stacked in the narrower pane. Each field is
-        a name/value pair in its own colour (user decision), so
-        `selected_robot_var`/`current_contestant_var` hold the value only --
-        the "Robot:"/"Contestant:" text is a separate static Label."""
-        bar = ttk.Frame(self, padding=4)
-        bar.grid(row=2, column=0, sticky="ew")
-        bar.columnconfigure(0, weight=1)
-        bar.columnconfigure(1, weight=1)
+    def _build_name_row(self) -> None:
+        """Selected Robot (left) and Contestant (right), below the info bar
+        -- values only, per the drawing (no "Robot:"/"Contestant:" captions)."""
+        row = ttk.Frame(self, padding=(_BODY_SIDE_PAD, 6, _BODY_SIDE_PAD, 2))
+        row.grid(row=1, column=0, sticky="ew")
+        row.columnconfigure(0, weight=1)
+        row.columnconfigure(1, weight=1)
 
         self.selected_robot_var = tk.StringVar(value="--")
-        self._build_entry_bar_field(bar, column=0, caption="Robot:", var=self.selected_robot_var)
+        ttk.Label(
+            row, textvariable=self.selected_robot_var, font=_NAME_ROW_FONT, foreground=_NAME_COLOR
+        ).grid(row=0, column=0, sticky="w")
 
         self.current_contestant_var = tk.StringVar(value="--")
-        self._build_entry_bar_field(
-            bar, column=1, caption="Contestant:", var=self.current_contestant_var
+        ttk.Label(
+            row, textvariable=self.current_contestant_var, font=_NAME_ROW_FONT, foreground=_NAME_COLOR
+        ).grid(row=0, column=1, sticky="e")
+
+    def _build_body(self) -> None:
+        """The three fixed columns between the bands (log / lists /
+        buttons), each with the same three rows: live-value tiles, a
+        controls row, then the column's main area (the only row that
+        stretches). A plain grid, not a `PanedWindow` -- the drawing has no
+        sashes."""
+        body = ttk.Frame(self, padding=(_BODY_SIDE_PAD, 4, _BODY_SIDE_PAD, 8))
+        body.grid(row=2, column=0, sticky="nsew")
+        self._body = body
+        body.rowconfigure(2, weight=1)
+
+        last_column = len(_BODY_COLUMN_WEIGHTS) - 1
+        for column, weight in enumerate(_BODY_COLUMN_WEIGHTS):
+            body.columnconfigure(column, weight=weight, uniform="body")
+            padx = (0, 0 if column == last_column else _BODY_COLUMN_GAP)
+
+            tiles = ttk.Frame(body)
+            tiles.grid(row=0, column=column, sticky="ew", padx=padx)
+            self._build_tiles(tiles, _TILE_SPECS[column])
+
+            controls = ttk.Frame(body)
+            controls.grid(row=1, column=column, sticky="ew", padx=padx, pady=(10, 0))
+            main = ttk.Frame(body)
+            main.grid(row=2, column=column, sticky="nsew", padx=padx, pady=(10, 0))
+            build_controls, build_main = (
+                (self._build_connection_controls, self._build_log_area),
+                (self._build_class_controls, self._build_selection_area),
+                (self._build_mode_controls, self._build_run_area),
+            )[column]
+            build_controls(controls)
+            build_main(main)
+
+    def _build_tiles(self, frame: ttk.Frame, specs: tuple) -> None:
+        """One group of live-value tiles: a grey caption over a white value."""
+        last_column = len(specs) - 1
+        for column, (caption, attr, weight) in enumerate(specs):
+            frame.columnconfigure(column, weight=weight)
+            var = tk.StringVar(value="--")
+            setattr(self, attr, var)
+            padx = (0, 0 if column == last_column else 8)
+            ttk.Label(
+                frame,
+                text=caption,
+                font=_TILE_CAPTION_FONT,
+                background=_TILE_CAPTION_COLOR,
+                anchor="center",
+                padding=(4, 2),
+            ).grid(row=0, column=column, sticky="ew", padx=padx)
+            ttk.Label(
+                frame,
+                textvariable=var,
+                font=_TILE_VALUE_FONT,
+                background=_TILE_VALUE_COLOR,
+                anchor="center",
+                padding=(4, 2),
+            ).grid(row=1, column=column, sticky="ew", padx=padx)
+
+    def _build_connection_controls(self, frame: ttk.Frame) -> None:
+        """COM port + the connect switch (`APP-1.8.1`). The switch is
+        sv_ttk's `Switch.TCheckbutton`; its ON/OFF caption follows
+        `connect_var` by itself, so `MainWindow` only ever sets the
+        variable. Baud lives in the Connection menu."""
+        frame.columnconfigure(0, weight=1)
+
+        self.port_var = tk.StringVar()
+        self.port_combo = ttk.Combobox(frame, textvariable=self.port_var, state="readonly", width=8)
+        self.port_combo.grid(row=0, column=0, sticky="ew", padx=(0, 12))
+
+        self.connect_var = tk.BooleanVar(value=False)
+        self.connect_switch = ttk.Checkbutton(
+            frame,
+            text="OFF",
+            width=4,
+            style="Switch.TCheckbutton",
+            variable=self.connect_var,
+            command=self._on_connect_clicked,
+        )
+        self.connect_switch.grid(row=0, column=1)
+        self.connect_var.trace_add(
+            "write",
+            lambda *_: self.connect_switch.configure(text="ON" if self.connect_var.get() else "OFF"),
         )
 
-    def _build_entry_bar_field(
-        self, bar: ttk.Frame, *, column: int, caption: str, var: tk.StringVar
-    ) -> None:
-        cell = ttk.Frame(bar)
-        cell.grid(row=0, column=column, sticky="w")
-        ttk.Label(
-            cell,
-            text=caption,
-            font=_ENTRY_BAR_FONT,
-            foreground=_ENTRY_BAR_LABEL_COLOR,
-        ).pack(side="left")
-        ttk.Label(
-            cell,
-            textvariable=var,
-            font=_ENTRY_BAR_FONT,
-            foreground=_ENTRY_BAR_VALUE_COLOR,
-        ).pack(side="left", padx=(6, 0))
-
-    def _build_entry_pane(self, paned: ttk.PanedWindow) -> None:
-        """Pane 1: event/competition/entry selection (`APP-1.8.2`).
-
-        Practice-mode gating (`core.select_competition`'s docstring: "the
-        competition grid is disabled during practice mode") is wired in
-        `APP-1.8.3` (`_set_entry_pane_enabled`, called from the Practice
-        Mode toggle and once at startup) rather than here -- `practice_mode`
-        defaults `true`, so this pane actually starts disabled until the
-        user leaves practice mode, matching legacy."""
-        frame = ttk.Frame(paned, padding=4)
-        paned.add(frame, weight=1)
+    def _build_class_controls(self, frame: ttk.Frame) -> None:
         frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(1, weight=1)
-        frame.rowconfigure(2, weight=1)
-
-        class_row = ttk.Frame(frame)
-        class_row.grid(row=0, column=0, sticky="ew")
-        class_row.columnconfigure(1, weight=1)
-        ttk.Label(class_row, text="Class:").grid(row=0, column=0)
         self.competition_class_var = tk.StringVar()
         self.competition_class_combo = ttk.Combobox(
-            class_row,
+            frame,
             textvariable=self.competition_class_var,
             state="readonly",
             values=COMPETITION_CLASSES,
+            width=8,
         )
-        self.competition_class_combo.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+        self.competition_class_combo.grid(row=0, column=0, sticky="ew")
         self.competition_class_combo.bind(
             "<<ComboboxSelected>>", self._on_competition_class_selected
         )
 
-        self.competition_tree = ttk.Treeview(
-            frame, columns=("name",), show="headings", height=5, selectmode="browse"
+    def _build_mode_controls(self, frame: ttk.Frame) -> None:
+        """The Practice <=> Contest toggle, captioned just `MODE` per the
+        drawing -- the current mode itself reads out in the info bar's
+        right-hand cell, directly above."""
+        frame.columnconfigure(0, weight=1)
+        self.practice_mode_button = ttk.Button(
+            frame, text="MODE", style="Run.Accent.TButton", command=self._on_practice_mode_clicked
         )
-        self.competition_tree.heading("name", text="Competition")
-        self.competition_tree.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
+        self.practice_mode_button.grid(row=0, column=0, sticky="ew")
+
+    def _build_log_area(self, frame: ttk.Frame) -> None:
+        """Left column: the raw Rx monitor (`APP-1.8.4`), titled "System
+        Log". Its Monitor/Clear controls are in the Tools menu and Verbose
+        is in the status bar."""
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+
+        box = tk.Frame(frame, background=_TILE_VALUE_COLOR, highlightthickness=1)
+        box.configure(highlightbackground="#808080", highlightcolor="#808080")
+        box.grid(row=0, column=0, sticky="nsew")
+        box.columnconfigure(0, weight=1)
+        box.rowconfigure(2, weight=1)
+
+        ttk.Label(
+            box,
+            text="System Log",
+            font=("TkDefaultFont", 9, "bold"),
+            background=_TILE_VALUE_COLOR,
+            anchor="center",
+            padding=(0, 2),
+        ).grid(row=0, column=0, sticky="ew")
+        ttk.Separator(box, orient=tk.HORIZONTAL).grid(row=1, column=0, sticky="ew")
+
+        # width/height are only the *requested* size -- kept tiny so this
+        # widget never dictates the column's width; the grid stretches it.
+        self.monitor_text = tk.Text(
+            box,
+            width=10,
+            height=4,
+            state="disabled",
+            wrap="none",
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            font=("TkFixedFont", 9),
+        )
+        self.monitor_text.grid(row=2, column=0, sticky="nsew")
+
+    def _build_selection_area(self, frame: ttk.Frame) -> None:
+        """Middle column: competition and entry lists (`APP-1.8.2`).
+
+        Practice-mode gating (`core.select_competition`'s docstring: "the
+        competition grid is disabled during practice mode") is wired in
+        `APP-1.8.3` (`_set_entry_pane_enabled`, called from the MODE button
+        and once at startup) rather than here -- `practice_mode` defaults
+        `true`, so these actually start disabled until the user leaves
+        practice mode, matching legacy."""
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
+
+        self.competition_tree = self._build_list(
+            frame, row=0, column_id="name", heading="CONTEST", style="Contest.Treeview"
+        )
         self.competition_tree.bind("<<TreeviewSelect>>", self._on_competition_selected)
 
-        # No "Selected: <competition>" label here anymore -- the top info
-        # bar's mode cell shows the current competition name instead (user
-        # decision), so this pane doesn't need to duplicate it.
-        self.entry_tree = ttk.Treeview(
-            frame, columns=("mouse",), show="headings", height=5, selectmode="browse"
+        self.entry_tree = self._build_list(
+            frame, row=1, column_id="mouse", heading="ENTRY", style="Entry.Treeview"
         )
-        self.entry_tree.heading("mouse", text="Mouse")
-        self.entry_tree.grid(row=2, column=0, sticky="nsew", pady=(4, 0))
         self.entry_tree.bind("<<TreeviewSelect>>", self._on_entry_selected)
 
-    def _build_run_pane(self, paned: ttk.PanedWindow) -> None:
-        """Pane 2: run control buttons + live display (`APP-1.8.3`)."""
-        frame = ttk.Frame(paned, padding=4)
-        paned.add(frame, weight=1)
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(1, weight=1)
+    def _build_list(
+        self, frame: ttk.Frame, *, row: int, column_id: str, heading: str, style: str
+    ) -> ttk.Treeview:
+        tree = ttk.Treeview(
+            frame, columns=(column_id,), show="headings", height=4, selectmode="browse", style=style
+        )
+        tree.heading(column_id, text=heading, anchor="w")
+        tree.column(column_id, width=80, anchor="w")
+        tree.grid(row=row, column=0, sticky="nsew", pady=(0 if row == 0 else 8, 0))
+        return tree
 
-        button_row = ttk.Frame(frame)
-        button_row.grid(row=0, column=0, sticky="ew")
-        # Captions match the legacy app's actual on-screen text
-        # (legacy/legacy-rats-screen.png), not the C# handler names --
-        # attribute names below stay tied to those handler names for
-        # cross-reference with behavior_inventory.md.
+    def _build_run_area(self, frame: ttk.Frame) -> None:
+        """Right column: run-control buttons (`APP-1.8.3`) above the
+        child-window launch buttons (`APP-1.8.4`)."""
+        frame.columnconfigure(0, weight=1, uniform="run")
+        frame.columnconfigure(1, weight=1, uniform="run")
+
+        # Captions are the drawing's -- attribute names stay tied to the
+        # legacy C# handler names for cross-reference with
+        # behavior_inventory.md. (row, column, columnspan) on a 2-wide grid.
         button_specs = [
-            ("Add Touch", "touch_button", self._on_touch_clicked),
-            ("DNF", "dnf_button", self._on_dnf_clicked),
-            ("Clear Display", "clear_button", self._on_clear_clicked),
-            ("New Robot", "new_mouse_button", self._on_new_mouse_clicked),
-            ("Practice <=> Contest", "practice_mode_button", self._on_practice_mode_clicked),
-            ("Extra Run", "extra_run_button", self._on_extra_run_clicked),
-            ("WatchDog", "watchdog_button", self._on_watchdog_clicked),
+            ("Add Touch", "touch_button", self._on_touch_clicked, 0, 0, 1),
+            ("Extra Run", "extra_run_button", self._on_extra_run_clicked, 0, 1, 1),
+            ("Retire (DNF)", "dnf_button", self._on_dnf_clicked, 1, 0, 1),
+            ("Clear Display", "clear_button", self._on_clear_clicked, 1, 1, 1),
+            ("New Robot", "new_mouse_button", self._on_new_mouse_clicked, 2, 0, 2),
         ]
-        for col, (label, attr, handler) in enumerate(button_specs):
-            button_row.columnconfigure(col, weight=1)
-            btn = ttk.Button(button_row, text=label, command=handler)
-            btn.grid(row=0, column=col, sticky="ew", padx=2, pady=2)
+        for label, attr, handler, row, column, span in button_specs:
+            frame.rowconfigure(row, weight=1, uniform="run_rows")
+            btn = ttk.Button(frame, text=label, style="Run.Accent.TButton", command=handler)
+            padx = (0, 0) if span == 2 else ((0, 15) if column == 0 else (15, 0))
+            btn.grid(
+                row=row, column=column, columnspan=span, sticky="nsew", padx=padx, pady=(0, 12)
+            )
             setattr(self, attr, btn)
 
-        values_frame = ttk.LabelFrame(frame, text="Live", padding=4)
-        values_frame.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
-        values_frame.columnconfigure(1, weight=1)
-        values_frame.columnconfigure(3, weight=1)
-
-        value_specs = [
-            ("Split", "split_time_var"),
-            ("Maze", "maze_time_var"),
-            ("Run", "run_time_var"),
-            ("Score", "score_time_var"),
-            ("Best score", "best_score_var"),
-            ("Rank", "rank_var"),
-            ("Time left", "time_left_var"),
-            ("Run #", "run_number_var"),
-            ("Runs allowed", "allowed_runs_var"),
-            ("Touches", "touches_var"),
-            ("WatchDog state", "watchdog_state_var"),
-            ("Timer state", "timer_state_var"),
-        ]
-        for i, (label, attr) in enumerate(value_specs):
-            row, half = divmod(i, 2)
-            var = tk.StringVar(value="--")
-            setattr(self, attr, var)
-            ttk.Label(values_frame, text=f"{label}:").grid(
-                row=row, column=half * 2, sticky="w", padx=(0, 4), pady=1
-            )
-            ttk.Label(values_frame, textvariable=var).grid(
-                row=row, column=half * 2 + 1, sticky="w", padx=(0, 12), pady=1
-            )
-
-        scoring_frame = ttk.LabelFrame(frame, text="Scoring model", padding=4)
-        scoring_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
-        scoring_specs = [
-            ("Touch time", "touch_time_cfg_var"),
-            ("Touch divider", "touch_divider_cfg_var"),
-            ("Maze divider", "maze_divider_cfg_var"),
-            ("Cumulative", "touch_cumulative_cfg_var"),
-            ("Enabled", "touch_enabled_cfg_var"),
-        ]
-        for col, (label, attr) in enumerate(scoring_specs):
-            scoring_frame.columnconfigure(col, weight=1)
-            var = tk.StringVar(value="--")
-            setattr(self, attr, var)
-            cell = ttk.Frame(scoring_frame)
-            cell.grid(row=0, column=col, sticky="ew", padx=4)
-            ttk.Label(cell, text=label).pack(anchor="w")
-            ttk.Label(cell, textvariable=var).pack(anchor="w")
-
-    def _build_monitor_pane(self, paned: ttk.PanedWindow) -> None:
-        """Pane 3: raw Tx/Rx monitor, log toggles, child-window launch
-        buttons (`APP-1.8.4`)."""
-        frame = ttk.Frame(paned, padding=4)
-        paned.add(frame, weight=1)
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(1, weight=1)
-
-        toggle_row = ttk.Frame(frame)
-        toggle_row.grid(row=0, column=0, sticky="ew")
-        self.monitor_toggle_button = ttk.Button(
-            toggle_row, text="Monitor", command=self._on_monitor_toggle_clicked
-        )
-        self.monitor_toggle_button.pack(side="left")
-        self.verbose_toggle_button = ttk.Button(
-            toggle_row, text="Verbose", command=self._on_verbose_toggle_clicked
-        )
-        self.verbose_toggle_button.pack(side="left", padx=(4, 0))
-        self.monitor_clear_button = ttk.Button(
-            toggle_row, text="Clear", command=self._on_monitor_clear_clicked
-        )
-        self.monitor_clear_button.pack(side="left", padx=(4, 0))
-
-        self.monitor_text = tk.Text(frame, height=10, state="disabled", wrap="none")
-        self.monitor_text.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
-
-        launch_frame = ttk.LabelFrame(frame, text="Windows", padding=4)
-        launch_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        launch_frame = ttk.LabelFrame(frame, text="DISPLAY", padding=(8, 2, 8, 8))
+        launch_frame.grid(row=3, column=0, columnspan=2, sticky="ew")
         # The 3 single-channel display variants are captioned by resolution
         # in the legacy app (legacy/legacy-rats-screen.png), not "v2"/"wide"
         # as the C# class names (single_ch_display_v2/_16_9) suggest --
@@ -418,22 +490,111 @@ class MainWindowLayout(tk.Tk):
         # All 3 display buttons share one command/flag per UI-1 -- they're
         # interchangeable skins of one window slot, not independent windows.
         # No target windows exist until APP-1.9-.12 -- these just toggle the
-        # AppState.windows open flags for now.
+        # AppState.windows open flags for now. The sixth slot is an inert
+        # placeholder (user decision), reserved for a future window.
         launch_specs = [
-            ("Calibrate", "calibrate_button", self._on_calibrate_clicked),
-            ("Run Order", "run_order_button", self._on_run_order_clicked),
-            ("612 x 595", "display_1ch_button", self._on_display_clicked),
             ("800 x 600", "display_1ch_v2_button", self._on_display_clicked),
+            ("612 x 595", "display_1ch_button", self._on_display_clicked),
+            ("Results", "results_1ch_button", self._on_results_clicked),
             ("1280 x 720", "display_1ch_wide_button", self._on_display_clicked),
-            ("Results (1ch)", "results_1ch_button", self._on_results_clicked),
-            ("Name Contestants", "name_contestants_button", self._on_name_contestants_clicked),
+            ("Run Order", "run_order_button", self._on_run_order_clicked),
+            ("—", "spare_display_button", None),
         ]
         for i, (label, attr, handler) in enumerate(launch_specs):
-            row, col = divmod(i, 4)
-            launch_frame.columnconfigure(col, weight=1)
-            btn = ttk.Button(launch_frame, text=label, command=handler)
-            btn.grid(row=row, column=col, sticky="ew", padx=2, pady=2)
+            row, col = divmod(i, 3)
+            launch_frame.columnconfigure(col, weight=1, uniform="launch")
+            btn = ttk.Button(launch_frame, text=label, style="Display.Accent.TButton")
+            if handler is None:
+                btn.state(("disabled",))
+            else:
+                btn.configure(command=handler)
+            btn.grid(row=row, column=col, sticky="ew", padx=3, pady=3)
             setattr(self, attr, btn)
+
+    def _build_status_bar(self) -> None:
+        """Bottom band, in the drawing's order: Timer, Verbose, Watchdog,
+        Calibrate. Timer/Calibrate are one mutually exclusive pair -- the
+        gate controller's mode (user decision) -- so they're radio buttons
+        on `gate_mode_var`; Verbose and Watchdog are independent toggles.
+        The timer-state and watchdog-alarm readouts sit at the right."""
+        bar = ttk.Frame(self, style="Band.TFrame", padding=(_BODY_SIDE_PAD, 2))
+        bar.grid(row=3, column=0, sticky="ew")
+
+        self.gate_mode_var = tk.StringVar(value=GATE_MODE_TIMER)
+        self.verbose_var = tk.BooleanVar(value=False)
+        # `AppState`'s default (`WatchdogState.watchdog_active = True`).
+        self.watchdog_var = tk.BooleanVar(value=True)
+
+        self.timer_mode_radio = ttk.Radiobutton(
+            bar,
+            text="Timer",
+            style="Band.TRadiobutton",
+            variable=self.gate_mode_var,
+            value=GATE_MODE_TIMER,
+            command=self._on_gate_mode_selected,
+        )
+        self.verbose_check = ttk.Checkbutton(
+            bar,
+            text="Verbose",
+            style="Band.TCheckbutton",
+            variable=self.verbose_var,
+            command=self._on_verbose_toggle_clicked,
+        )
+        self.watchdog_check = ttk.Checkbutton(
+            bar,
+            text="Watchdog",
+            style="Band.TCheckbutton",
+            variable=self.watchdog_var,
+            command=self._on_watchdog_clicked,
+        )
+        self.calibrate_mode_radio = ttk.Radiobutton(
+            bar,
+            text="Calibrate",
+            style="Band.TRadiobutton",
+            variable=self.gate_mode_var,
+            value=GATE_MODE_CALIBRATE,
+            command=self._on_gate_mode_selected,
+        )
+        for widget in (
+            self.timer_mode_radio,
+            self.verbose_check,
+            self.watchdog_check,
+            self.calibrate_mode_radio,
+        ):
+            widget.pack(side="left", padx=(0, 16))
+
+        self.timer_state_var = tk.StringVar(value="--")
+        ttk.Label(bar, textvariable=self.timer_state_var, background=_BAND_COLOR).pack(side="right")
+        self.watchdog_state_var = tk.StringVar(value="")
+        ttk.Label(
+            bar,
+            textvariable=self.watchdog_state_var,
+            background=_BAND_COLOR,
+            foreground=_ALARM_COLOR,
+            font=("TkDefaultFont", 10, "bold"),
+        ).pack(side="right", padx=(0, 12))
+
+    def _show_scoring_dialog(self) -> None:
+        """Tools -> Scoring Model...: the current competition's scoring
+        parameters, read-only. Shares the same `*_cfg_var`s the live
+        display refresh already fills, so it stays current while open."""
+        if self._scoring_dialog is not None and self._scoring_dialog.winfo_exists():
+            self._scoring_dialog.lift()
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title("Scoring Model")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        self._scoring_dialog = dialog
+
+        frame = ttk.Frame(dialog, padding=12)
+        frame.pack(fill="both", expand=True)
+        for row, (label, attr) in enumerate(_SCORING_SPECS):
+            ttk.Label(frame, text=f"{label}:").grid(row=row, column=0, sticky="w", padx=(0, 16), pady=2)
+            ttk.Label(frame, textvariable=getattr(self, attr)).grid(row=row, column=1, sticky="e", pady=2)
+        ttk.Button(frame, text="Close", command=dialog.destroy).grid(
+            row=len(_SCORING_SPECS), column=0, columnspan=2, pady=(12, 0)
+        )
 
     def _set_entry_pane_enabled(self, enabled: bool) -> None:
         """Practice-mode gating (`core.select_competition`'s docstring:
@@ -444,6 +605,11 @@ class MainWindowLayout(tk.Tk):
         tree_state = ("!disabled",) if enabled else ("disabled",)
         self.competition_tree.state(tree_state)
         self.entry_tree.state(tree_state)
+
+    def _set_connection_controls_enabled(self, enabled: bool) -> None:
+        """Port and baud can't change while connected."""
+        self.port_combo.configure(state="readonly" if enabled else "disabled")
+        self._connection_menu.entryconfigure("Baud", state="normal" if enabled else "disabled")
 
     def _append_monitor_line(self, text: str) -> None:
         self.monitor_text.configure(state="normal")
@@ -519,7 +685,7 @@ class MainWindowLayout(tk.Tk):
     def _on_verbose_toggle_clicked(self) -> None:
         pass
 
-    def _on_calibrate_clicked(self) -> None:
+    def _on_gate_mode_selected(self) -> None:
         pass
 
     def _on_run_order_clicked(self) -> None:
