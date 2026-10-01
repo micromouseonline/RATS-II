@@ -4,6 +4,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Activate venv if it exists, otherwise warn user
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+fi
+
 show_usage() {
     echo "Usage: $0 {app|test|install}"
     echo ""
@@ -17,19 +22,19 @@ install_deps() {
     echo "Installing dependencies..."
     pip install -r requirements.txt
     cd contest_app
-    pip install .
+    pip install -e .
     cd ..
 }
 
 run_app() {
     echo "Starting contest app..."
-    PYTHONPATH="$SCRIPT_DIR/contest_app/src:$PYTHONPATH" python contest_app/src/rats/main_window.py
+    python -m rats.main_window
 }
 
 run_tests() {
     echo "Running tests..."
     cd contest_app
-    PYTHONPATH="$SCRIPT_DIR/contest_app/src:$PYTHONPATH" pytest tests/ -v
+    pytest tests/ -v
 }
 
 if [ $# -eq 0 ]; then

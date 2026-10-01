@@ -55,24 +55,34 @@ by people who aren't Access/VBA specialists.
 ### Prerequisites
 
 - Python 3.10 or later
-- pip
+- pip/venv
 
-### Installation and Running
+### Setup
 
-A helper script `run.sh` is provided for common tasks:
+Create and activate a virtual environment:
 
 ```bash
-# Install dependencies
-./run.sh install
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
 
+Install dependencies:
+
+```bash
+./run.sh install
+```
+
+The `run.sh` script will automatically activate the virtual environment if `.venv` exists.
+
+### Running the project
+
+```bash
 # Run the contest app
 ./run.sh app
 
 # Run the test suite
 ./run.sh test
 ```
-
-Alternatively, see the [contest_app](contest_app/) directory for direct Python module invocation.
 
 ## Status
 
