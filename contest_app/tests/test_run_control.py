@@ -180,15 +180,15 @@ def test_new_mouse_confirmed_clears_selection_labels(demo_db, make_main_window, 
         entry_id = int(window.entry_tree.get_children()[0])
         window.entry_tree.selection_set(str(entry_id))
         window._on_entry_selected()
-        assert window.selected_robot_var.get() != "Robot: --"
+        assert window.selected_robot_var.get() != "--"
 
         monkeypatch.setattr(main_window.messagebox, "askyesno", lambda *a, **k: True)
         window._on_new_mouse_clicked()
 
-        assert window.selected_robot_var.get() == "Robot: --"
+        assert window.selected_robot_var.get() == "--"
         # core.new_mouse() sets contestant to legacy's "_" placeholder, not
         # blank -- displayed literally, matching .2's convention for it.
-        assert window.current_contestant_var.get() == "Contestant: _"
+        assert window.current_contestant_var.get() == "_"
     finally:
         window.destroy()
 

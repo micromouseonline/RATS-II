@@ -68,6 +68,14 @@ _INFO_BAR_COLOR = "blue"
 # just a placeholder label now, not a functional degraded mode.
 NO_EVENT_TEXT = "STAND ALONE"
 
+# User-requested entry bar (selected Robot/Contestant), below the info bar:
+# same font size as the info bar. Field name ("Robot:"/"Contestant:") and
+# its value are colored differently -- user decision -- so each is its own
+# Label rather than one Label per field like the info bar's.
+_ENTRY_BAR_FONT = ("TkDefaultFont", 16, "bold")
+_ENTRY_BAR_LABEL_COLOR = "black"
+_ENTRY_BAR_VALUE_COLOR = "blue"
+
 
 def list_available_ports() -> list[str]:
     """`comPort_ComboBox`'s population (`Form1_Load`), via `pyserial`
@@ -129,13 +137,14 @@ class MainWindowLayout(tk.Tk):
 
     def _build_layout(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(3, weight=1)
 
         self._build_toolbar()
         self._build_info_bar()
+        self._build_entry_bar()
 
         paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        paned.grid(row=2, column=0, sticky="nsew")
+        paned.grid(row=3, column=0, sticky="nsew")
         self._paned = paned
 
         self._build_entry_pane(paned)
@@ -210,6 +219,45 @@ class MainWindowLayout(tk.Tk):
             anchor="e",
         ).grid(row=0, column=2, sticky="e")
 
+    def _build_entry_bar(self) -> None:
+        """User-requested entry bar: selected Robot and Contestant, on one
+        row below the info bar (same font size as the info bar) -- moved
+        here from the entry pane so both fields sit together at full
+        window width instead of stacked in the narrower pane. Each field is
+        a name/value pair in its own colour (user decision), so
+        `selected_robot_var`/`current_contestant_var` hold the value only --
+        the "Robot:"/"Contestant:" text is a separate static Label."""
+        bar = ttk.Frame(self, padding=4)
+        bar.grid(row=2, column=0, sticky="ew")
+        bar.columnconfigure(0, weight=1)
+        bar.columnconfigure(1, weight=1)
+
+        self.selected_robot_var = tk.StringVar(value="--")
+        self._build_entry_bar_field(bar, column=0, caption="Robot:", var=self.selected_robot_var)
+
+        self.current_contestant_var = tk.StringVar(value="--")
+        self._build_entry_bar_field(
+            bar, column=1, caption="Contestant:", var=self.current_contestant_var
+        )
+
+    def _build_entry_bar_field(
+        self, bar: ttk.Frame, *, column: int, caption: str, var: tk.StringVar
+    ) -> None:
+        cell = ttk.Frame(bar)
+        cell.grid(row=0, column=column, sticky="w")
+        ttk.Label(
+            cell,
+            text=caption,
+            font=_ENTRY_BAR_FONT,
+            foreground=_ENTRY_BAR_LABEL_COLOR,
+        ).pack(side="left")
+        ttk.Label(
+            cell,
+            textvariable=var,
+            font=_ENTRY_BAR_FONT,
+            foreground=_ENTRY_BAR_VALUE_COLOR,
+        ).pack(side="left", padx=(6, 0))
+
     def _build_entry_pane(self, paned: ttk.PanedWindow) -> None:
         """Pane 1: event/competition/entry selection (`APP-1.8.2`).
 
@@ -257,15 +305,6 @@ class MainWindowLayout(tk.Tk):
         self.entry_tree.heading("mouse", text="Mouse")
         self.entry_tree.grid(row=2, column=0, sticky="nsew", pady=(4, 0))
         self.entry_tree.bind("<<TreeviewSelect>>", self._on_entry_selected)
-
-        self.selected_robot_var = tk.StringVar(value="Robot: --")
-        ttk.Label(frame, textvariable=self.selected_robot_var).grid(
-            row=3, column=0, sticky="w", pady=(4, 0)
-        )
-        self.current_contestant_var = tk.StringVar(value="Contestant: --")
-        ttk.Label(frame, textvariable=self.current_contestant_var).grid(
-            row=4, column=0, sticky="w"
-        )
 
     def _build_run_pane(self, paned: ttk.PanedWindow) -> None:
         """Pane 2: run control buttons + live display (`APP-1.8.3`)."""

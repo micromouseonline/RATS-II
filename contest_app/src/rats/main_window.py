@@ -210,8 +210,8 @@ class MainWindow(MainWindowLayout):
         for item in self.entry_tree.get_children():
             self.entry_tree.delete(item)
         self._entries_by_id.clear()
-        self.selected_robot_var.set("Robot: --")
-        self.current_contestant_var.set("Contestant: --")
+        self.selected_robot_var.set("--")
+        self.current_contestant_var.set("--")
 
     def _on_competition_class_selected(self, event: object = None) -> None:
         """`Competition_Class_ComboBox_SelectedIndexChanged`, `Form1.cs:2237`."""
@@ -279,8 +279,8 @@ class MainWindow(MainWindowLayout):
     def _update_robot_contestant_labels(self) -> None:
         robot = self.app_state.entry.robot or "--"
         contestant = self.app_state.entry.contestant or "--"
-        self.selected_robot_var.set(f"Robot: {robot}")
-        self.current_contestant_var.set(f"Contestant: {contestant}")
+        self.selected_robot_var.set(robot)
+        self.current_contestant_var.set(contestant)
 
     def _refresh_mode_var(self) -> None:
         """Top info bar's right-hand cell. User decision: it's not simply

@@ -121,8 +121,8 @@ def test_selecting_entry_updates_core_state_and_labels(demo_db, make_main_window
 
         assert window.app_state.entry.entry_id == entry.entry_id
         assert window.app_state.entry.robot == entry.mouse_name
-        assert window.selected_robot_var.get() == f"Robot: {entry.mouse_name}"
-        assert window.current_contestant_var.get() == f"Contestant: {window.app_state.entry.contestant}"
+        assert window.selected_robot_var.get() == entry.mouse_name
+        assert window.current_contestant_var.get() == window.app_state.entry.contestant
     finally:
         window.destroy()
 
@@ -146,8 +146,8 @@ def test_changing_class_resets_downstream_selection(demo_db, make_main_window):
         window._on_competition_class_selected()
 
         assert window.app_state.event.competition_name == ""
-        assert window.selected_robot_var.get() == "Robot: --"
-        assert window.current_contestant_var.get() == "Contestant: --"
+        assert window.selected_robot_var.get() == "--"
+        assert window.current_contestant_var.get() == "--"
         assert window.entry_tree.get_children() == ()
     finally:
         window.destroy()
