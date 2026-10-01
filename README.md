@@ -50,6 +50,76 @@ by people who aren't Access/VBA specialists.
   is real, since it's already public via published contest results). Safe
   to commit and share; both apps default to opening it.
 
+## Running the contest timing app
+
+`contest_app` requires Python 3.10+ and Tkinter (bundled with the official
+Python installer on Windows/macOS; on Linux it's usually a separate
+package — see below). There's no release build yet, so it's run from
+source into a local virtual environment (`contest_app/.venv`, created
+automatically, git-ignored).
+
+The quickest way is the bundled script, which creates/updates the venv and
+launches the app in one step. From the repository root:
+
+**Linux / macOS**
+```sh
+./contest_app/run.sh
+```
+If Tkinter isn't already installed, install it first (one-off, needs
+sudo): Debian/Ubuntu `sudo apt install python3-tk`, Fedora
+`sudo dnf install python3-tkinter`, Arch `sudo pacman -S tk`, macOS
+(Homebrew Python) `brew install python-tk`.
+
+**Windows**
+```bat
+contest_app\run.bat
+```
+(Double-clicking `run.bat` in File Explorer also works.) Tkinter is
+included with the standard python.org installer, so no extra install step
+is needed.
+
+Equivalent manual steps, if you'd rather manage the virtual environment
+yourself (same on every platform; use `.venv\Scripts\` instead of
+`.venv/bin/` on Windows):
+```sh
+cd contest_app
+python3 -m venv .venv
+.venv/bin/pip install -e .
+.venv/bin/python -m rats.main_window
+```
+
+The app opens with no database loaded — use its **File > Open Database...**
+to pick one. `sample_data/demo.db` (at the repository root) is a safe demo
+database to start with; `live_data/rats.db`, if you have it, is real
+competition data and is git-ignored.
+
+## Running the tests
+
+Same idea, via the matching test script:
+
+**Linux / macOS**
+```sh
+./contest_app/run_tests.sh
+```
+
+**Windows**
+```bat
+contest_app\run_tests.bat
+```
+
+Both forward extra arguments to `pytest`, e.g. `./contest_app/run_tests.sh -k serial`.
+
+Manual equivalent:
+```sh
+cd contest_app
+python3 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/pytest
+```
+
+`management_app` has no code yet (phase 2, not started), so there's
+nothing to run or test there.
+
 ## Status
 
 Early stage. The legacy system has been fully analyzed and documented, and
